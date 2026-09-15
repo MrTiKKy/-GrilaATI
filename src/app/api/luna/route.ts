@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
+import { guardRead } from "@/lib/apiGuard";
+import { parseMonth, parseYear } from "@/lib/validate";
 import {
   toDateString,
   type AngajatDto,
@@ -9,15 +11,18 @@ import {
 } from "@/lib/types";
 
 export async function GET(request: Request) {
+  const denied = await guardRead(request);
+  if (denied) return denied;
+
   try {
     const { searchParams } = new URL(request.url);
-    const an = Number(searchParams.get("an"));
-    const luna = Number(searchParams.get("luna"));
+    const an = parseYear(searchParams.get("an"));
+    const luna = parseMonth(searchParams.get("luna"));
 
-    if (!Number.isInteger(an) || an < 2000 || an > 2100) {
+    if (an === null) {
       return NextResponse.json({ error: "Parametru an invalid" }, { status: 400 });
     }
-    if (!Number.isInteger(luna) || luna < 1 || luna > 12) {
+    if (luna === null) {
       return NextResponse.json({ error: "Parametru luna invalid" }, { status: 400 });
     }
 
@@ -77,7 +82,6 @@ export async function GET(request: Request) {
         ciornaRaw === null || ciornaRaw === undefined || ciornaRaw === ""
           ? null
           : String(ciornaRaw);
-      // Acceptă doar A sau R; ignoră valori vechi tip "A/R"
       const ciorna =
         ciornaStr === "A" || ciornaStr === "R" ? ciornaStr : null;
       return {

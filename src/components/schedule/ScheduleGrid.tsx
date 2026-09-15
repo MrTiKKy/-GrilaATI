@@ -37,10 +37,8 @@ import {
   SortableStaffRow,
   type StaffMember,
 } from "./SortableStaffRow";
-import {
-  buildGraficPdfData,
-  downloadGraficPdf,
-} from "@/components/pdf/exportGraficPdf";
+import { downloadGraficPdf } from "@/components/pdf/exportGraficPdf";
+import type { GraficPdfData } from "@/components/pdf/GraficAtiPdf";
 
 const DAY_ABBR = ["D", "L", "Ma", "Mi", "J", "V", "S"] as const;
 
@@ -389,29 +387,17 @@ export function ScheduleGrid() {
     setExporting(true);
     setError(null);
     try {
-      const data = buildGraficPdfData({
-        year,
-        monthIndex,
-        days: columns,
-        staff,
-        grid,
-      });
-
-      // Salvează snapshot în arhivă (pe lună)
+      // Snapshot construit pe server din DB (nu din stare locală)
       const saveRes = await fetch("/api/grafice", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          an: year,
-          luna: month,
-          titlu: data.title,
-          snapshot: data,
-        }),
+        body: JSON.stringify({ an: year, luna: month }),
       });
       if (!saveRes.ok) throw new Error(await readError(saveRes));
+      const saved = (await saveRes.json()) as { snapshot: GraficPdfData };
 
       const fileName = `grafic-ati-${year}-${String(month).padStart(2, "0")}.pdf`;
-      await downloadGraficPdf(data, fileName);
+      await downloadGraficPdf(saved.snapshot, fileName);
       flashStatus("PDF descărcat + salvat în arhivă");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Export PDF eșuat");

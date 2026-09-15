@@ -1,22 +1,30 @@
 import { NextResponse } from "next/server";
+import { writeAudit } from "@/lib/audit";
+import { guardWrite } from "@/lib/apiGuard";
 import { getDb } from "@/lib/db";
+import { clientKey } from "@/lib/rateLimit";
+import { readJsonLimited } from "@/lib/readJsonLimited";
+import { parseUuidList } from "@/lib/validate";
 import type { OrdineBody } from "@/lib/types";
 
 export async function PUT(request: Request) {
-  try {
-    const body = (await request.json()) as OrdineBody;
-    const ids = body.ids;
+  const denied = await guardWrite(request);
+  if (denied) return denied;
 
-    if (!Array.isArray(ids) || ids.length === 0) {
-      return NextResponse.json({ error: "ids trebuie să fie un array" }, { status: 400 });
-    }
-    if (ids.some((id) => typeof id !== "string" || !id)) {
-      return NextResponse.json({ error: "ids invalide" }, { status: 400 });
+  try {
+    const parsed = await readJsonLimited<OrdineBody>(request, 32_768);
+    if (!parsed.ok) return parsed.response;
+
+    const ids = parseUuidList(parsed.data.ids, { max: 200 });
+    if (!ids) {
+      return NextResponse.json(
+        { error: "ids trebuie să fie un array de UUID-uri (1–200)" },
+        { status: 400 },
+      );
     }
 
     const sql = getDb();
 
-    // Sequential updates — ordine 1..n
     for (let i = 0; i < ids.length; i++) {
       await sql`
         UPDATE angajati
@@ -24,6 +32,12 @@ export async function PUT(request: Request) {
         WHERE id = ${ids[i]}::uuid AND activ = true
       `;
     }
+
+    await writeAudit({
+      action: "angajat_ordine",
+      detail: { count: ids.length },
+      ip: clientKey(request),
+    });
 
     return NextResponse.json({ ok: true });
   } catch (error) {

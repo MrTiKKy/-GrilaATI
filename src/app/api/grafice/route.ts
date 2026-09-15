@@ -1,23 +1,20 @@
 import { NextResponse } from "next/server";
+import { writeAudit } from "@/lib/audit";
+import { guardRead, guardWrite } from "@/lib/apiGuard";
+import {
+  buildGraficSnapshotFromDb,
+  buildMonthTitle,
+} from "@/lib/buildGraficSnapshot";
 import { getDb } from "@/lib/db";
-import type {
-  CreateGraficBody,
-  GraficFinalMeta,
-  GraficSnapshot,
-  GraficeListResponse,
-} from "@/lib/types";
-
-function isSnapshot(value: unknown): value is GraficSnapshot {
-  if (!value || typeof value !== "object") return false;
-  const s = value as GraficSnapshot;
-  return (
-    typeof s.title === "string" &&
-    Array.isArray(s.days) &&
-    Array.isArray(s.rows)
-  );
-}
+import { clientKey } from "@/lib/rateLimit";
+import { readJsonLimited } from "@/lib/readJsonLimited";
+import { parseMonth, parseYear } from "@/lib/validate";
+import type { GraficFinalMeta, GraficeListResponse } from "@/lib/types";
 
 export async function GET(request: Request) {
+  const denied = await guardRead(request);
+  if (denied) return denied;
+
   try {
     const { searchParams } = new URL(request.url);
     const anParam = searchParams.get("an");
@@ -27,9 +24,9 @@ export async function GET(request: Request) {
 
     let rows;
     if (anParam && lunaParam) {
-      const an = Number(anParam);
-      const luna = Number(lunaParam);
-      if (!Number.isInteger(an) || !Number.isInteger(luna) || luna < 1 || luna > 12) {
+      const an = parseYear(anParam);
+      const luna = parseMonth(lunaParam);
+      if (an === null || luna === null) {
         return NextResponse.json({ error: "an/luna invalide" }, { status: 400 });
       }
       rows = await sql`
@@ -39,8 +36,8 @@ export async function GET(request: Request) {
         ORDER BY created_at DESC
       `;
     } else if (anParam) {
-      const an = Number(anParam);
-      if (!Number.isInteger(an)) {
+      const an = parseYear(anParam);
+      if (an === null) {
         return NextResponse.json({ error: "an invalid" }, { status: 400 });
       }
       rows = await sql`
@@ -81,28 +78,34 @@ export async function GET(request: Request) {
   }
 }
 
+/** Salvează snapshot construit pe server din DB (nu din body client). */
 export async function POST(request: Request) {
-  try {
-    const body = (await request.json()) as CreateGraficBody;
-    const { an, luna, titlu, snapshot } = body;
+  const denied = await guardWrite(request, { limit: 20, windowMs: 60_000 });
+  if (denied) return denied;
 
-    if (!Number.isInteger(an) || an < 2000 || an > 2100) {
+  try {
+    const parsed = await readJsonLimited<{ an?: unknown; luna?: unknown }>(
+      request,
+      4_096,
+    );
+    if (!parsed.ok) return parsed.response;
+
+    const an = parseYear(parsed.data.an);
+    const luna = parseMonth(parsed.data.luna);
+    if (an === null) {
       return NextResponse.json({ error: "an invalid" }, { status: 400 });
     }
-    if (!Number.isInteger(luna) || luna < 1 || luna > 12) {
+    if (luna === null) {
       return NextResponse.json({ error: "luna invalidă" }, { status: 400 });
     }
-    if (!titlu?.trim()) {
-      return NextResponse.json({ error: "titlu obligatoriu" }, { status: 400 });
-    }
-    if (!isSnapshot(snapshot)) {
-      return NextResponse.json({ error: "snapshot invalid" }, { status: 400 });
-    }
+
+    const snapshot = await buildGraficSnapshotFromDb(an, luna);
+    const titlu = buildMonthTitle(an, luna);
 
     const sql = getDb();
     const inserted = await sql`
       INSERT INTO grafice_finale (an, luna, titlu, snapshot)
-      VALUES (${an}, ${luna}, ${titlu.trim()}, ${JSON.stringify(snapshot)}::jsonb)
+      VALUES (${an}, ${luna}, ${titlu}, ${JSON.stringify(snapshot)}::jsonb)
       RETURNING id, an, luna, titlu, created_at
     `;
 
@@ -110,6 +113,13 @@ export async function POST(request: Request) {
     if (!row) {
       return NextResponse.json({ error: "Salvare eșuată" }, { status: 500 });
     }
+
+    await writeAudit({
+      action: "grafic_save",
+      resource: String(row.id),
+      detail: { an, luna, rows: snapshot.rows.length },
+      ip: clientKey(request),
+    });
 
     return NextResponse.json(
       {
@@ -123,6 +133,7 @@ export async function POST(request: Request) {
               ? row.created_at.toISOString()
               : String(row.created_at),
         },
+        snapshot,
       },
       { status: 201 },
     );

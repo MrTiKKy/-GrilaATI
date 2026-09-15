@@ -1,18 +1,33 @@
 import { NextResponse } from "next/server";
+import { writeAudit } from "@/lib/audit";
+import { guardWrite } from "@/lib/apiGuard";
 import { getDb } from "@/lib/db";
+import { clientKey } from "@/lib/rateLimit";
+import { readJsonLimited } from "@/lib/readJsonLimited";
+import { clampString } from "@/lib/validate";
 import type { CreateAngajatBody, CreateAngajatResponse } from "@/lib/types";
 
 export async function POST(request: Request) {
+  const denied = await guardWrite(request);
+  if (denied) return denied;
+
   try {
-    const body = (await request.json()) as CreateAngajatBody;
-    const nume = body.nume?.trim().toUpperCase();
-    if (!nume) {
+    const parsed = await readJsonLimited<CreateAngajatBody>(request, 4_096);
+    if (!parsed.ok) return parsed.response;
+
+    const numeRaw = clampString(parsed.data.nume, 120);
+    if (!numeRaw) {
       return NextResponse.json({ error: "Numele este obligatoriu" }, { status: 400 });
     }
+    const numeNorm = numeRaw.toUpperCase();
 
     const zileCoAn =
-      typeof body.zileCoAn === "number" && Number.isFinite(body.zileCoAn)
-        ? Math.max(0, Math.floor(body.zileCoAn))
+      typeof parsed.data.zileCoAn === "number" &&
+      Number.isFinite(parsed.data.zileCoAn) &&
+      Number.isInteger(parsed.data.zileCoAn) &&
+      parsed.data.zileCoAn >= 0 &&
+      parsed.data.zileCoAn <= 366
+        ? parsed.data.zileCoAn
         : 0;
 
     const sql = getDb();
@@ -26,7 +41,7 @@ export async function POST(request: Request) {
 
     const inserted = await sql`
       INSERT INTO angajati (nume, zile_co_an, ordine, activ)
-      VALUES (${nume}, ${zileCoAn}, ${ordine}, true)
+      VALUES (${numeNorm}, ${zileCoAn}, ${ordine}, true)
       RETURNING id, nume, zile_co_an, ordine
     `;
 
@@ -34,6 +49,13 @@ export async function POST(request: Request) {
     if (!row) {
       return NextResponse.json({ error: "Insert eșuat" }, { status: 500 });
     }
+
+    await writeAudit({
+      action: "angajat_create",
+      resource: String(row.id),
+      detail: { nume: String(row.nume), zileCoAn },
+      ip: clientKey(request),
+    });
 
     const response: CreateAngajatResponse = {
       angajat: {

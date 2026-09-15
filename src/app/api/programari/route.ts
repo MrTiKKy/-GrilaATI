@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
+import { writeAudit } from "@/lib/audit";
+import { guardWrite } from "@/lib/apiGuard";
 import { getDb } from "@/lib/db";
+import { clientKey } from "@/lib/rateLimit";
+import { readJsonLimited } from "@/lib/readJsonLimited";
+import { parseUuid } from "@/lib/validate";
 import {
   isProgramareValoare,
   isSectieValoare,
@@ -9,14 +14,19 @@ import {
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 export async function PUT(request: Request) {
-  try {
-    const body = (await request.json()) as UpsertProgramareBody;
-    const { angajatId, data } = body;
+  const denied = await guardWrite(request, { limit: 180 });
+  if (denied) return denied;
 
-    if (!angajatId || typeof angajatId !== "string") {
-      return NextResponse.json({ error: "angajatId obligatoriu" }, { status: 400 });
+  try {
+    const parsed = await readJsonLimited<UpsertProgramareBody>(request, 4_096);
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.data;
+
+    const angajatId = parseUuid(body.angajatId);
+    if (!angajatId) {
+      return NextResponse.json({ error: "angajatId invalid" }, { status: 400 });
     }
-    if (!data || !DATE_RE.test(data)) {
+    if (!body.data || !DATE_RE.test(body.data)) {
       return NextResponse.json(
         { error: "data trebuie YYYY-MM-DD" },
         { status: 400 },
@@ -50,19 +60,32 @@ export async function PUT(request: Request) {
       await sql`
         DELETE FROM programari
         WHERE angajat_id = ${angajatId}::uuid
-          AND data = ${data}::date
+          AND data = ${body.data}::date
       `;
+      await writeAudit({
+        action: "programare_delete",
+        resource: angajatId,
+        detail: { data: body.data },
+        ip: clientKey(request),
+      });
       return NextResponse.json({ ok: true, deleted: true });
     }
 
     await sql`
       INSERT INTO programari (angajat_id, data, valoare, ciorna)
-      VALUES (${angajatId}::uuid, ${data}::date, ${valoareRaw}, ${ciorna})
+      VALUES (${angajatId}::uuid, ${body.data}::date, ${valoareRaw}, ${ciorna})
       ON CONFLICT (angajat_id, data)
       DO UPDATE SET
         valoare = EXCLUDED.valoare,
         ciorna = EXCLUDED.ciorna
     `;
+
+    await writeAudit({
+      action: "programare_upsert",
+      resource: angajatId,
+      detail: { data: body.data, valoare: valoareRaw, ciorna },
+      ip: clientKey(request),
+    });
 
     return NextResponse.json({
       ok: true,

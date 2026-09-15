@@ -1,17 +1,28 @@
 import { NextResponse } from "next/server";
+import { writeAudit } from "@/lib/audit";
+import { guardWrite } from "@/lib/apiGuard";
 import { getDb } from "@/lib/db";
+import { clientKey } from "@/lib/rateLimit";
+import { readJsonLimited } from "@/lib/readJsonLimited";
+import { parseUuid } from "@/lib/validate";
 import type { UpdateConcediuBody } from "@/lib/types";
 
 type Ctx = { params: Promise<{ id: string }> };
 
 export async function PATCH(request: Request, context: Ctx) {
+  const denied = await guardWrite(request);
+  if (denied) return denied;
+
   try {
-    const { id } = await context.params;
+    const { id: rawId } = await context.params;
+    const id = parseUuid(rawId);
     if (!id) {
-      return NextResponse.json({ error: "id lipsă" }, { status: 400 });
+      return NextResponse.json({ error: "id invalid" }, { status: 400 });
     }
 
-    const body = (await request.json()) as UpdateConcediuBody;
+    const parsed = await readJsonLimited<UpdateConcediuBody>(request, 4_096);
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.data;
 
     let zileCoAn = 0;
     if (body.zileCoAn !== null && body.zileCoAn !== undefined) {
@@ -19,10 +30,11 @@ export async function PATCH(request: Request, context: Ctx) {
         typeof body.zileCoAn !== "number" ||
         !Number.isFinite(body.zileCoAn) ||
         !Number.isInteger(body.zileCoAn) ||
-        body.zileCoAn < 0
+        body.zileCoAn < 0 ||
+        body.zileCoAn > 366
       ) {
         return NextResponse.json(
-          { error: "zileCoAn trebuie să fie întreg >= 0 sau null" },
+          { error: "zileCoAn trebuie să fie întreg 0–366 sau null" },
           { status: 400 },
         );
       }
@@ -40,6 +52,13 @@ export async function PATCH(request: Request, context: Ctx) {
     if (!updated[0]) {
       return NextResponse.json({ error: "Angajat negăsit" }, { status: 404 });
     }
+
+    await writeAudit({
+      action: "concediu_update",
+      resource: id,
+      detail: { zileCoAn },
+      ip: clientKey(request),
+    });
 
     return NextResponse.json({
       angajat: {

@@ -99,11 +99,10 @@ export type GraficFinalDetail = GraficFinalMeta & {
   snapshot: GraficSnapshot;
 };
 
+/** Body client pentru export — snapshot e construit pe server din DB */
 export type CreateGraficBody = {
   an: number;
   luna: number;
-  titlu: string;
-  snapshot: GraficSnapshot;
 };
 
 export type GraficeListResponse = {

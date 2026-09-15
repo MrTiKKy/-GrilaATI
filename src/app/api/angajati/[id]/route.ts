@@ -1,24 +1,36 @@
 import { NextResponse } from "next/server";
+import { writeAudit } from "@/lib/audit";
+import { guardWrite } from "@/lib/apiGuard";
 import { getDb } from "@/lib/db";
+import { clientKey } from "@/lib/rateLimit";
+import { readJsonLimited } from "@/lib/readJsonLimited";
+import { clampString, parseUuid } from "@/lib/validate";
 import type { UpdateAngajatBody } from "@/lib/types";
 
 type Ctx = { params: Promise<{ id: string }> };
 
 export async function PATCH(request: Request, context: Ctx) {
+  const denied = await guardWrite(request);
+  if (denied) return denied;
+
   try {
-    const { id } = await context.params;
+    const { id: rawId } = await context.params;
+    const id = parseUuid(rawId);
     if (!id) {
-      return NextResponse.json({ error: "id lipsă" }, { status: 400 });
+      return NextResponse.json({ error: "id invalid" }, { status: 400 });
     }
 
-    const body = (await request.json()) as UpdateAngajatBody;
-    const nume = body.nume?.trim().toUpperCase();
-    if (!nume) {
+    const parsed = await readJsonLimited<UpdateAngajatBody>(request, 4_096);
+    if (!parsed.ok) return parsed.response;
+
+    const numeRaw = clampString(parsed.data.nume, 120);
+    if (!numeRaw) {
       return NextResponse.json(
         { error: "Nimic de actualizat (nume)" },
         { status: 400 },
       );
     }
+    const nume = numeRaw.toUpperCase();
 
     const sql = getDb();
     const updated = await sql`
@@ -32,6 +44,13 @@ export async function PATCH(request: Request, context: Ctx) {
       return NextResponse.json({ error: "Angajat negăsit" }, { status: 404 });
     }
 
+    await writeAudit({
+      action: "angajat_rename",
+      resource: id,
+      detail: { nume: String(updated[0].nume) },
+      ip: clientKey(request),
+    });
+
     return NextResponse.json({
       angajat: { id: String(updated[0].id), nume: String(updated[0].nume) },
     });
@@ -44,11 +63,15 @@ export async function PATCH(request: Request, context: Ctx) {
   }
 }
 
-export async function DELETE(_request: Request, context: Ctx) {
+export async function DELETE(request: Request, context: Ctx) {
+  const denied = await guardWrite(request);
+  if (denied) return denied;
+
   try {
-    const { id } = await context.params;
+    const { id: rawId } = await context.params;
+    const id = parseUuid(rawId);
     if (!id) {
-      return NextResponse.json({ error: "id lipsă" }, { status: 400 });
+      return NextResponse.json({ error: "id invalid" }, { status: 400 });
     }
 
     const sql = getDb();
@@ -62,6 +85,12 @@ export async function DELETE(_request: Request, context: Ctx) {
     if (!updated[0]) {
       return NextResponse.json({ error: "Angajat negăsit" }, { status: 404 });
     }
+
+    await writeAudit({
+      action: "angajat_delete",
+      resource: id,
+      ip: clientKey(request),
+    });
 
     return NextResponse.json({ ok: true });
   } catch (error) {

@@ -1,14 +1,22 @@
 import { NextResponse } from "next/server";
+import { writeAudit } from "@/lib/audit";
+import { guardRead, guardWrite } from "@/lib/apiGuard";
 import { getDb } from "@/lib/db";
+import { clientKey } from "@/lib/rateLimit";
+import { parseUuid } from "@/lib/validate";
 import type { GraficFinalDetail, GraficSnapshot } from "@/lib/types";
 
 type Ctx = { params: Promise<{ id: string }> };
 
-export async function GET(_request: Request, context: Ctx) {
+export async function GET(request: Request, context: Ctx) {
+  const denied = await guardRead(request);
+  if (denied) return denied;
+
   try {
-    const { id } = await context.params;
+    const { id: rawId } = await context.params;
+    const id = parseUuid(rawId);
     if (!id) {
-      return NextResponse.json({ error: "id lipsă" }, { status: 400 });
+      return NextResponse.json({ error: "id invalid" }, { status: 400 });
     }
 
     const sql = getDb();
@@ -51,23 +59,37 @@ export async function GET(_request: Request, context: Ctx) {
   }
 }
 
-export async function DELETE(_request: Request, context: Ctx) {
+export async function DELETE(request: Request, context: Ctx) {
+  const denied = await guardWrite(request);
+  if (denied) return denied;
+
   try {
-    const { id } = await context.params;
+    const { id: rawId } = await context.params;
+    const id = parseUuid(rawId);
     if (!id) {
-      return NextResponse.json({ error: "id lipsă" }, { status: 400 });
+      return NextResponse.json({ error: "id invalid" }, { status: 400 });
     }
 
     const sql = getDb();
     const deleted = await sql`
       DELETE FROM grafice_finale
       WHERE id = ${id}::uuid
-      RETURNING id
+      RETURNING id, an, luna
     `;
 
     if (!deleted[0]) {
       return NextResponse.json({ error: "Salvare negăsită" }, { status: 404 });
     }
+
+    await writeAudit({
+      action: "grafic_delete",
+      resource: id,
+      detail: {
+        an: Number(deleted[0].an),
+        luna: Number(deleted[0].luna),
+      },
+      ip: clientKey(request),
+    });
 
     return NextResponse.json({ ok: true });
   } catch (error) {

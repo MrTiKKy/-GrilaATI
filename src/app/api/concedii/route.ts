@@ -1,13 +1,18 @@
 import { NextResponse } from "next/server";
+import { guardRead } from "@/lib/apiGuard";
 import { getDb } from "@/lib/db";
+import { parseYear } from "@/lib/validate";
 import type { ConcediiResponse, ConcediuDto } from "@/lib/types";
 
 export async function GET(request: Request) {
+  const denied = await guardRead(request);
+  if (denied) return denied;
+
   try {
     const { searchParams } = new URL(request.url);
-    const an = Number(searchParams.get("an"));
+    const an = parseYear(searchParams.get("an"));
 
-    if (!Number.isInteger(an) || an < 2000 || an > 2100) {
+    if (an === null) {
       return NextResponse.json({ error: "Parametru an invalid" }, { status: 400 });
     }
 
