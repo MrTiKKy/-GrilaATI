@@ -46,7 +46,7 @@ export async function POST(request: Request) {
       );
     }
 
-    if (!verifyCredentials(email, password)) {
+    if (!(await verifyCredentials(email, password))) {
       await writeAudit({
         action: "login_fail",
         ip,

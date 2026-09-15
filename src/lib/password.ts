@@ -1,32 +1,40 @@
-import { createHash, timingSafeEqual } from "crypto";
+import bcrypt from "bcryptjs";
+import { getDb } from "@/lib/db";
 
-function sha256(value: string): Buffer {
-  return createHash("sha256").update(value.normalize("NFKC")).digest();
-}
+/** Hash dummy — folosit când userul nu există, ca timing-ul să fie similar */
+const DUMMY_HASH =
+  "$2b$12$ltqXATbdc9I.bEa.hkVilunGbyycXBzLDVEj2w6Zmk17eoxoOqH8y";
 
-function safeEqualStr(a: string, b: string): boolean {
-  return timingSafeEqual(sha256(a), sha256(b));
-}
+const BCRYPT_ROUNDS = 12;
 
-function requireEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(`${name} lipsește din .env`);
-  }
-  return value;
+export async function hashPassword(password: string): Promise<string> {
+  return bcrypt.hash(password, BCRYPT_ROUNDS);
 }
 
 /**
- * Verifică email + parolă din env (AUTH_EMAIL / AUTH_PASSWORD).
- * Compară ambele mereu (timing-safe), ca să nu se vadă care e greșit.
+ * Verifică email + parolă față de tabelul `users`.
+ * Compară mereu un hash (dummy dacă lipsește userul) — mitigare timing / user enumeration.
  */
-export function verifyCredentials(email: string, password: string): boolean {
-  const expectedEmail = requireEnv("AUTH_EMAIL").trim().toLowerCase();
-  const expectedPassword = requireEnv("AUTH_PASSWORD");
-
+export async function verifyCredentials(
+  email: string,
+  password: string,
+): Promise<boolean> {
   const emailNorm = email.trim().toLowerCase();
-  const emailOk = safeEqualStr(emailNorm, expectedEmail);
-  const passOk = safeEqualStr(password, expectedPassword);
+  const sql = getDb();
 
-  return emailOk && passOk;
+  const rows = await sql`
+    SELECT password_hash
+    FROM users
+    WHERE email = ${emailNorm}
+      AND activ = true
+    LIMIT 1
+  `;
+
+  const hash =
+    rows[0] && typeof rows[0].password_hash === "string"
+      ? String(rows[0].password_hash)
+      : DUMMY_HASH;
+
+  const ok = await bcrypt.compare(password, hash);
+  return Boolean(rows[0]) && ok;
 }
