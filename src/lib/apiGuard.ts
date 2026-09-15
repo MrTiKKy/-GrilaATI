@@ -2,7 +2,9 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import {
   SESSION_COOKIE,
+  readSessionPayload,
   verifySessionToken,
+  type SessionPayload,
 } from "@/lib/auth";
 import { clientKey, rateLimit } from "@/lib/rateLimit";
 
@@ -13,6 +15,23 @@ export async function requireSession(): Promise<NextResponse | null> {
     return NextResponse.json({ error: "Neautentificat" }, { status: 401 });
   }
   return null;
+}
+
+export async function requireSessionUser(): Promise<
+  { user: SessionPayload } | { error: NextResponse }
+> {
+  const jar = await cookies();
+  const token = jar.get(SESSION_COOKIE)?.value;
+  const user = await readSessionPayload(token);
+  if (!user) {
+    return {
+      error: NextResponse.json(
+        { error: "Sesiune invalidă — te rugăm să te autentifici din nou" },
+        { status: 401 },
+      ),
+    };
+  }
+  return { user };
 }
 
 export function enforceRateLimit(

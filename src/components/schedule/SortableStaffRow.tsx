@@ -26,6 +26,10 @@ type SortableStaffRowProps = {
   onActivate: (row: number, col: number) => void;
   onDelete: (staff: StaffMember) => void;
   onCellFocus: () => void;
+  /** Ascunde coloana O.SD (mobil) */
+  showOsd?: boolean;
+  /** Nume mai îngust (mobil / săptămână) */
+  compactName?: boolean;
 };
 
 function GripIcon() {
@@ -79,6 +83,8 @@ export function SortableStaffRow({
   onActivate,
   onDelete,
   onCellFocus,
+  showOsd = true,
+  compactName = false,
 }: SortableStaffRowProps) {
   const {
     attributes,
@@ -108,12 +114,19 @@ export function SortableStaffRow({
     >
       <th
         scope="row"
-        className="sticky left-0 z-10 border-b border-r border-slate-100 bg-white px-1.5 py-0 text-left group-hover:bg-slate-50"
+        className="sticky left-0 z-10 border-0 border-b border-r border-b-slate-200 border-r-slate-400 bg-white px-1 py-0 text-left group-hover:bg-slate-50 lg:px-1.5"
       >
-        <div className="flex min-w-[168px] items-center gap-0.5">
+        <div
+          className={[
+            "flex items-center gap-0.5",
+            compactName
+              ? "min-w-0 w-[4.75rem] max-w-[4.75rem]"
+              : "min-w-[7.5rem] lg:min-w-[168px]",
+          ].join(" ")}
+        >
           <button
             type="button"
-            className="flex h-7 w-7 shrink-0 cursor-grab items-center justify-center rounded-md text-slate-400 transition-colors duration-150 hover:bg-slate-100 hover:text-slate-600 active:cursor-grabbing touch-none"
+            className="hidden h-7 w-7 shrink-0 cursor-grab items-center justify-center rounded-md text-slate-400 transition-colors duration-150 hover:bg-slate-100 hover:text-slate-600 active:cursor-grabbing touch-none lg:flex"
             aria-label={`Mută ${staff.name}`}
             title="Trage pentru reordonare"
             {...attributes}
@@ -122,12 +135,19 @@ export function SortableStaffRow({
             <GripIcon />
           </button>
           <span className="flex min-w-0 flex-1 flex-col gap-0.5 py-1">
-            <span className="truncate text-[11px] font-semibold tracking-wide text-slate-800 uppercase">
+            <span
+              className={[
+                "truncate font-semibold tracking-wide text-slate-800 uppercase",
+                compactName ? "text-[10px] leading-tight" : "text-[11px]",
+              ].join(" ")}
+              title={staff.name}
+            >
               {staff.name}
             </span>
             <span
               className={[
-                "text-[9px] font-medium leading-none tabular-nums",
+                "font-medium leading-none tabular-nums",
+                compactName ? "text-[8px]" : "text-[9px]",
                 staff.zileCoAn === 0
                   ? "text-slate-400"
                   : staff.zileCoRamase < 0
@@ -145,7 +165,10 @@ export function SortableStaffRow({
           <button
             type="button"
             onClick={() => onDelete(staff)}
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-slate-400 opacity-70 transition-all duration-150 hover:bg-rose-50 hover:text-rose-600 group-hover:opacity-100"
+            className={[
+              "flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-slate-400 opacity-70 transition-all duration-150 hover:bg-rose-50 hover:text-rose-600 group-hover:opacity-100",
+              compactName ? "hidden" : "",
+            ].join(" ")}
             aria-label={`Șterge ${staff.name}`}
             title="Șterge angajat"
           >
@@ -160,9 +183,8 @@ export function SortableStaffRow({
           <td
             key={`${staff.id}-${col.key}`}
             className={[
-              "border-b border-slate-100 p-0",
+              "border-0 p-0",
               weekend ? "bg-slate-100" : "bg-white",
-              col.kind === "custom" ? "border-l border-slate-100" : "",
             ].join(" ")}
           >
             <CellFocus
@@ -178,9 +200,11 @@ export function SortableStaffRow({
           </td>
         );
       })}
-      <td className="border-b border-l border-slate-100 bg-slate-50/80 px-1.5 text-center text-slate-400">
-        —
-      </td>
+      {showOsd && (
+        <td className="border-0 border-b border-l border-b-slate-200 border-l-slate-400 bg-slate-50/80 px-1.5 text-center text-slate-400">
+          —
+        </td>
+      )}
     </tr>
   );
 }

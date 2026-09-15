@@ -23,6 +23,7 @@ import {
   useRef,
   useState,
   type KeyboardEvent,
+  type TouchEvent,
 } from "react";
 import type { LunaResponse } from "@/lib/types";
 import { AddStaffDialog } from "./AddStaffDialog";
@@ -74,6 +75,24 @@ function buildDayColumns(year: number, monthIndex: number): DayColumn[] {
       date,
     };
   });
+}
+
+/** Săptămâni Luni–Duminică (prima/ultima pot fi incomplete) */
+function buildWeeks(days: DayColumn[]): DayColumn[][] {
+  const weeks: DayColumn[][] = [];
+  let current: DayColumn[] = [];
+
+  for (const day of days) {
+    const dow = new Date(`${day.date}T12:00:00`).getDay(); // 0 = D
+    const isMonday = dow === 1;
+    if (isMonday && current.length > 0) {
+      weeks.push(current);
+      current = [];
+    }
+    current.push(day);
+  }
+  if (current.length > 0) weeks.push(current);
+  return weeks;
 }
 
 function emptyCell(): CellData {
@@ -145,7 +164,12 @@ export function ScheduleGrid() {
     () => buildDayColumns(year, monthIndex),
     [year, monthIndex],
   );
+  const weeks = useMemo(() => buildWeeks(dayColumns), [dayColumns]);
+  /** Index global în dayColumns — folosit la salvare / panel */
   const columns = dayColumns;
+
+  const [isDesktop, setIsDesktop] = useState(true);
+  const [weekIndex, setWeekIndex] = useState(0);
 
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [grid, setGrid] = useState<GridState>({});
@@ -160,8 +184,43 @@ export function ScheduleGrid() {
   const [exporting, setExporting] = useState(false);
   const gridRef = useRef<HTMLDivElement>(null);
   const statusTimer = useRef<number | null>(null);
+  const touchStartX = useRef<number | null>(null);
 
   const staffIds = useMemo(() => staff.map((s) => s.id), [staff]);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 1024px)");
+    const apply = () => setIsDesktop(mq.matches);
+    apply();
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
+  }, []);
+
+  // Săptămâna curentă (ziua de azi, dacă e în lună)
+  useEffect(() => {
+    const today = new Date();
+    const sameMonth =
+      today.getFullYear() === year && today.getMonth() === monthIndex;
+    if (sameMonth) {
+      const d = today.getDate();
+      const idx = weeks.findIndex((w) => w.some((col) => col.day === d));
+      setWeekIndex(idx >= 0 ? idx : 0);
+    } else {
+      setWeekIndex(0);
+    }
+  }, [weeks, year, monthIndex]);
+
+  const visibleColumns = isDesktop
+    ? dayColumns
+    : (weeks[weekIndex] ?? []);
+
+  const weekLabel = useMemo(() => {
+    const w = weeks[weekIndex];
+    if (!w?.length) return "";
+    const first = w[0].day;
+    const last = w[w.length - 1].day;
+    return first === last ? `${first}` : `${first}–${last}`;
+  }, [weeks, weekIndex]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -174,6 +233,28 @@ export function ScheduleGrid() {
     if (statusTimer.current) window.clearTimeout(statusTimer.current);
     statusTimer.current = window.setTimeout(() => setStatus(null), 2500);
   }, []);
+
+  const goWeek = useCallback(
+    (delta: number) => {
+      setWeekIndex((i) =>
+        Math.max(0, Math.min(weeks.length - 1, i + delta)),
+      );
+    },
+    [weeks.length],
+  );
+
+  // La schimbarea săptămânii, închide selecția dacă ziua nu mai e vizibilă
+  useEffect(() => {
+    if (isDesktop || !active) return;
+    const key = dayColumns[active.col]?.key;
+    if (!key) return;
+    const inWeek = (weeks[weekIndex] ?? []).some((c) => c.key === key);
+    if (!inWeek) {
+      setActive(null);
+      setPanelOpen(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- doar la weekIndex
+  }, [weekIndex]);
 
   useEffect(() => {
     let cancelled = false;
@@ -219,11 +300,10 @@ export function ScheduleGrid() {
     [columns.length, staff.length],
   );
 
-  // Păstrează casuța activă vizibilă în stânga panelului din dreapta
+  // Păstrează casuța activă vizibilă (desktop: stânga panelului; mobil: bottom sheet)
   useEffect(() => {
     if (!panelOpen || !active) return;
 
-    const PANEL_WIDTH = 384; // max-w-sm
     const STICKY_NAME = 152;
     const MARGIN = 20;
 
@@ -234,6 +314,9 @@ export function ScheduleGrid() {
       );
       if (!container || !cell) return;
 
+      const isDesktopPanel = window.matchMedia("(min-width: 1024px)").matches;
+      const PANEL_WIDTH = isDesktopPanel ? 384 : 0;
+
       const cRect = container.getBoundingClientRect();
       const cellRect = cell.getBoundingClientRect();
 
@@ -241,7 +324,7 @@ export function ScheduleGrid() {
         cRect.right,
         window.innerWidth - PANEL_WIDTH,
       );
-      const visibleLeft = cRect.left + STICKY_NAME;
+      const visibleLeft = cRect.left + (isDesktopPanel ? STICKY_NAME : 96);
 
       let deltaX = 0;
       if (cellRect.right > visibleRight - MARGIN) {
@@ -263,7 +346,6 @@ export function ScheduleGrid() {
     }
 
     const raf = window.requestAnimationFrame(scrollActiveIntoView);
-    // din nou după animația panelului (~200ms)
     const t = window.setTimeout(scrollActiveIntoView, 220);
 
     return () => {
@@ -303,8 +385,8 @@ export function ScheduleGrid() {
     }
   }
 
-  async function confirmCell(payload: ConfirmPayload) {
-    if (!active || !columns[active.col] || !staff[active.row]) return;
+  async function confirmCell(payload: ConfirmPayload): Promise<boolean> {
+    if (!active || !columns[active.col] || !staff[active.row]) return false;
     const person = staff[active.row];
     const col = columns[active.col];
     const prev = grid[person.id]?.[col.key] ?? emptyCell();
@@ -357,6 +439,7 @@ export function ScheduleGrid() {
       } else {
         flashStatus("Programare salvată");
       }
+      return true;
     } catch (e) {
       setGrid((g) => ({
         ...g,
@@ -377,6 +460,7 @@ export function ScheduleGrid() {
         );
       }
       setError(e instanceof Error ? e.message : "Salvare eșuată");
+      return false;
     } finally {
       gridRef.current?.focus();
     }
@@ -552,11 +636,44 @@ export function ScheduleGrid() {
 
   const titleMonth = monthLabel(year, monthIndex);
 
-  const rowColumns = columns.map((col) => ({
+  const rowColumns = visibleColumns.map((col) => ({
     kind: "day" as const,
     key: col.key,
     weekend: col.weekend,
   }));
+
+  function activateFromVisible(row: number, localCol: number) {
+    const key = visibleColumns[localCol]?.key;
+    if (!key) return;
+    const globalCol = dayColumns.findIndex((c) => c.key === key);
+    if (globalCol >= 0) activate(row, globalCol);
+  }
+
+  function activeLocalCol(rowIndex: number): number | null {
+    if (!active || active.row !== rowIndex) return null;
+    const key = dayColumns[active.col]?.key;
+    if (!key) return null;
+    const local = visibleColumns.findIndex((c) => c.key === key);
+    return local >= 0 ? local : null;
+  }
+
+  function onTouchStartGrid(e: TouchEvent) {
+    if (isDesktop) return;
+    touchStartX.current = e.touches[0]?.clientX ?? null;
+  }
+
+  function onTouchEndGrid(e: TouchEvent) {
+    if (isDesktop || touchStartX.current == null) return;
+    const x = e.changedTouches[0]?.clientX;
+    if (x == null) {
+      touchStartX.current = null;
+      return;
+    }
+    const dx = x - touchStartX.current;
+    touchStartX.current = null;
+    if (Math.abs(dx) < 56) return;
+    goWeek(dx < 0 ? 1 : -1);
+  }
 
   return (
     <div className="relative mx-auto w-full max-w-[1500px] px-3 py-6 sm:px-6">
@@ -573,9 +690,15 @@ export function ScheduleGrid() {
               Programare lunară
             </p>
             <h1 className="mt-1 text-base font-semibold tracking-tight text-slate-900 sm:text-lg">
-              S.C.J.U. BRAILA - GRAFIC ASISTENTI ATI II – {titleMonth}
+              <span className="lg:hidden">Grilă ATI · {titleMonth}</span>
+              <span className="hidden lg:inline">
+                S.C.J.U. BRAILA - GRAFIC ASISTENTI ATI II – {titleMonth}
+              </span>
             </h1>
-            <p className="mt-1 text-xs text-slate-500">
+            <p className="mt-1 text-xs text-slate-500 lg:hidden">
+              Tap pe casuță · swipe / săgeți pentru săptămână
+            </p>
+            <p className="mt-1 hidden text-xs text-slate-500 lg:block">
               Click / săgeți pe casuțe · grip pe nume pentru reordonare · date din
               Neon
             </p>
@@ -589,29 +712,59 @@ export function ScheduleGrid() {
               <p className="mt-2 text-xs font-medium text-emerald-700">{status}</p>
             )}
           </div>
-          <div className="flex shrink-0 flex-wrap gap-2">
+          <div className="flex shrink-0 flex-col gap-2 sm:flex-row sm:flex-wrap">
             <button
               type="button"
               onClick={() => void exportPdfTest()}
               disabled={exporting || loading || staff.length === 0}
-              className="rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm font-medium text-slate-700 transition-colors duration-150 hover:border-sky-300 hover:bg-sky-50 hover:text-sky-800 disabled:cursor-not-allowed disabled:opacity-50"
+              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm font-medium text-slate-700 transition-colors duration-150 hover:border-sky-300 hover:bg-sky-50 hover:text-sky-800 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:py-2"
             >
               {exporting ? "Se generează…" : "Export PDF test"}
             </button>
             <Link
               href="/istoric"
-              className="rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm font-medium text-slate-700 transition-colors duration-150 hover:border-sky-300 hover:bg-sky-50 hover:text-sky-800"
+              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-center text-sm font-medium text-slate-700 transition-colors duration-150 hover:border-sky-300 hover:bg-sky-50 hover:text-sky-800 sm:w-auto sm:py-2"
             >
               Arhivă →
             </Link>
             <Link
               href="/concedii"
-              className="rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm font-medium text-slate-700 transition-colors duration-150 hover:border-sky-300 hover:bg-sky-50 hover:text-sky-800"
+              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-center text-sm font-medium text-slate-700 transition-colors duration-150 hover:border-sky-300 hover:bg-sky-50 hover:text-sky-800 sm:w-auto sm:py-2"
             >
               Zile CO →
             </Link>
           </div>
         </header>
+
+        {/* Navigator săptămână — doar mobil */}
+        <div className="mb-3 flex items-center gap-2 lg:hidden">
+          <button
+            type="button"
+            onClick={() => goWeek(-1)}
+            disabled={weekIndex <= 0}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-lg font-semibold text-slate-700 disabled:opacity-40"
+            aria-label="Săptămâna anterioară"
+          >
+            ‹
+          </button>
+          <div className="min-w-0 flex-1 text-center">
+            <p className="text-sm font-semibold text-slate-800">
+              Săpt. {weekIndex + 1} / {Math.max(weeks.length, 1)}
+            </p>
+            <p className="text-xs text-slate-500">
+              {weekLabel ? `Zilele ${weekLabel}` : "—"}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => goWeek(1)}
+            disabled={weekIndex >= weeks.length - 1}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-lg font-semibold text-slate-700 disabled:opacity-40"
+            aria-label="Săptămâna următoare"
+          >
+            ›
+          </button>
+        </div>
 
         <div
           ref={gridRef}
@@ -619,7 +772,12 @@ export function ScheduleGrid() {
           role="grid"
           aria-label="Grilă programare ATI"
           onKeyDown={handleKeyDown}
-          className="overflow-x-auto rounded-xl border border-slate-200 outline-none focus-visible:ring-2 focus-visible:ring-sky-400/50"
+          onTouchStart={onTouchStartGrid}
+          onTouchEnd={onTouchEndGrid}
+          className={[
+            "rounded-xl border border-slate-200 outline-none focus-visible:ring-2 focus-visible:ring-sky-400/50",
+            isDesktop ? "overflow-x-auto" : "overflow-x-hidden touch-pan-y",
+          ].join(" ")}
         >
           <DndContext
             sensors={sensors}
@@ -628,39 +786,53 @@ export function ScheduleGrid() {
             onDragEnd={(e) => void handleDragEnd(e)}
             onDragCancel={() => setDraggingId(null)}
           >
-            <table className="w-max min-w-full border-collapse text-[11px]">
+            <table
+              className={[
+                "schedule-grid border-collapse text-[11px]",
+                isDesktop ? "w-max min-w-full" : "w-full table-fixed",
+              ].join(" ")}
+            >
               <thead>
                 <tr>
                   <th
                     rowSpan={2}
-                    className="sticky left-0 z-20 min-w-[168px] border-b border-r border-slate-200 bg-slate-50 px-3 py-2 text-left text-xs font-semibold tracking-wide text-slate-600 uppercase"
+                    className={[
+                      "sticky left-0 z-20 border-0 border-b border-r border-b-slate-200 border-r-slate-400 bg-slate-50 py-2 text-left text-xs font-semibold tracking-wide text-slate-600 uppercase",
+                      isDesktop
+                        ? "min-w-[168px] px-3"
+                        : "w-[4.75rem] max-w-[4.75rem] px-1",
+                    ].join(" ")}
                   >
                     Nume
                   </th>
-                  {columns.map((col) => (
+                  {visibleColumns.map((col) => (
                     <th
                       key={`${col.key}-n`}
                       className={[
-                        "min-w-[2rem] border-b border-slate-200 px-0.5 py-1.5 text-center font-semibold text-slate-700",
+                        "border-0 border-b border-r border-b-slate-200 border-r-slate-400 px-0.5 py-1.5 text-center font-semibold text-slate-700",
+                        isDesktop ? "min-w-[2rem]" : "",
                         col.weekend ? "bg-slate-100" : "bg-slate-50",
                       ].join(" ")}
                     >
                       {col.day}
                     </th>
                   ))}
-                  <th
-                    rowSpan={2}
-                    className="min-w-[2.75rem] border-b border-l border-slate-200 bg-slate-50 px-1.5 py-2 text-center text-xs font-semibold text-slate-600"
-                  >
-                    O.SD
-                  </th>
+                  {isDesktop && (
+                    <th
+                      rowSpan={2}
+                      className="min-w-[2.75rem] border-0 border-b border-l border-b-slate-200 border-l-slate-400 bg-slate-50 px-1.5 py-2 text-center text-xs font-semibold text-slate-600"
+                    >
+                      O.SD
+                    </th>
+                  )}
                 </tr>
                 <tr>
-                  {dayColumns.map((col) => (
+                  {visibleColumns.map((col) => (
                     <th
                       key={`${col.key}-a`}
                       className={[
-                        "min-w-[2rem] border-b border-slate-200 px-0.5 py-1 text-center font-medium text-slate-500",
+                        "border-0 border-b border-r border-b-slate-200 border-r-slate-400 px-0.5 py-1 text-center font-medium text-slate-500",
+                        isDesktop ? "min-w-[2rem]" : "",
                         col.weekend ? "bg-slate-100" : "bg-white",
                       ].join(" ")}
                     >
@@ -677,7 +849,7 @@ export function ScheduleGrid() {
                   {!loading && staff.length === 0 ? (
                     <tr>
                       <td
-                        colSpan={columns.length + 2}
+                        colSpan={visibleColumns.length + (isDesktop ? 2 : 1)}
                         className="px-4 py-8 text-center text-sm text-slate-500"
                       >
                         Niciun angajat activ. Adaugă primul rând mai jos.
@@ -691,12 +863,12 @@ export function ScheduleGrid() {
                         rowIndex={rowIndex}
                         columns={rowColumns}
                         values={grid[person.id] ?? {}}
-                        activeCol={
-                          active?.row === rowIndex ? active.col : null
-                        }
-                        onActivate={activate}
+                        activeCol={activeLocalCol(rowIndex)}
+                        onActivate={activateFromVisible}
                         onDelete={(p) => void deleteStaff(p)}
                         onCellFocus={() => gridRef.current?.focus()}
+                        showOsd={isDesktop}
+                        compactName={!isDesktop}
                       />
                     ))
                   )}
@@ -739,7 +911,7 @@ export function ScheduleGrid() {
           <button
             type="button"
             onClick={() => setAddOpen(true)}
-            className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3.5 py-2 text-sm font-medium text-slate-700 transition-colors duration-150 hover:border-sky-400 hover:bg-sky-50 hover:text-sky-800"
+            className="w-full rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3.5 py-2.5 text-sm font-medium text-slate-700 transition-colors duration-150 hover:border-sky-400 hover:bg-sky-50 hover:text-sky-800 sm:w-auto sm:py-2"
           >
             + Adaugă angajat
           </button>
@@ -747,15 +919,15 @@ export function ScheduleGrid() {
 
         <footer className="mt-5 grid grid-cols-1 gap-2 border-t border-slate-100 pt-4 text-[11px] font-medium tracking-wide text-slate-600 uppercase sm:grid-cols-3">
           <p className="text-left">MEDIC SEF: DR. SUSANU CAROLINA</p>
-          <p className="text-center">DELEGAT</p>
-          <p className="text-right">AS SEF: POPA NICOLETA</p>
+          <p className="text-left sm:text-center">DELEGAT</p>
+          <p className="text-left sm:text-right">AS SEF: POPA NICOLETA</p>
         </footer>
       </div>
 
       <RightOptionPanel
         open={panelOpen && !!panelContext}
         context={panelContext}
-        onConfirm={(payload) => void confirmCell(payload)}
+        onConfirm={(payload) => confirmCell(payload)}
         onClose={() => {
           setPanelOpen(false);
           setActive(null);

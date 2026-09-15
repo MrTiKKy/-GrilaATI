@@ -12,7 +12,10 @@ export type AuditAction =
   | "programare_upsert"
   | "programare_delete"
   | "grafic_save"
-  | "grafic_delete";
+  | "grafic_delete"
+  | "user_create"
+  | "user_email_change"
+  | "user_password_change";
 
 export async function writeAudit(params: {
   action: AuditAction;

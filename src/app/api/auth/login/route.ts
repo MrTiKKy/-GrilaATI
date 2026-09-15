@@ -4,7 +4,7 @@ import {
   sessionCookieOptions,
   SESSION_COOKIE,
 } from "@/lib/auth";
-import { verifyCredentials } from "@/lib/password";
+import { authenticateUser } from "@/lib/password";
 import { writeAudit } from "@/lib/audit";
 import { clientKey, rateLimit } from "@/lib/rateLimit";
 import { readJsonLimited } from "@/lib/readJsonLimited";
@@ -46,7 +46,8 @@ export async function POST(request: Request) {
       );
     }
 
-    if (!(await verifyCredentials(email, password))) {
+    const user = await authenticateUser(email, password);
+    if (!user) {
       await writeAudit({
         action: "login_fail",
         ip,
@@ -58,13 +59,17 @@ export async function POST(request: Request) {
       );
     }
 
-    const token = await createSessionToken();
+    const token = await createSessionToken({
+      userId: user.id,
+      email: user.email,
+    });
     const response = NextResponse.json({ ok: true });
     response.cookies.set(SESSION_COOKIE, token, sessionCookieOptions());
     await writeAudit({
       action: "login_ok",
+      resource: user.id,
       ip,
-      detail: { email: email.trim().toLowerCase() },
+      detail: { email: user.email },
     });
     return response;
   } catch (error) {

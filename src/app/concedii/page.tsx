@@ -13,17 +13,12 @@ async function readError(res: Response): Promise<string> {
   }
 }
 
-function ConcediuRow({
-  row,
-  onSaved,
-  onError,
-  onStatus,
-}: {
-  row: ConcediuDto;
-  onSaved: (next: ConcediuDto) => void;
-  onError: (msg: string) => void;
-  onStatus: (msg: string) => void;
-}) {
+function useConcediuEdit(
+  row: ConcediuDto,
+  onSaved: (next: ConcediuDto) => void,
+  onError: (msg: string) => void,
+  onStatus: (msg: string) => void,
+) {
   const [draft, setDraft] = useState(
     row.zileCoAn === 0 ? "" : String(row.zileCoAn),
   );
@@ -74,6 +69,95 @@ function ConcediuRow({
     }
   }
 
+  return { draft, setDraft, saving, save };
+}
+
+function ConcediuCard({
+  row,
+  onSaved,
+  onError,
+  onStatus,
+}: {
+  row: ConcediuDto;
+  onSaved: (next: ConcediuDto) => void;
+  onError: (msg: string) => void;
+  onStatus: (msg: string) => void;
+}) {
+  const { draft, setDraft, saving, save } = useConcediuEdit(
+    row,
+    onSaved,
+    onError,
+    onStatus,
+  );
+  const ramaseNegative = row.ramase < 0;
+
+  return (
+    <article className="rounded-xl border border-slate-200 bg-white p-4">
+      <h3 className="text-sm font-semibold tracking-wide text-slate-800 uppercase">
+        {row.nume}
+      </h3>
+      <label className="mt-3 block text-xs font-medium tracking-wide text-slate-500 uppercase">
+        Zile CO alocate
+        <input
+          type="number"
+          min={0}
+          step={1}
+          inputMode="numeric"
+          value={draft}
+          placeholder="—"
+          disabled={saving}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={() => void save()}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              (e.target as HTMLInputElement).blur();
+            }
+          }}
+          className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition-colors duration-150 placeholder:text-slate-400 focus:border-sky-400 focus:ring-2 focus:ring-sky-400/20 disabled:opacity-60"
+          aria-label={`Zile CO alocate pentru ${row.nume}`}
+        />
+      </label>
+      <div className="mt-3 flex gap-4 text-sm">
+        <p className="text-slate-600">
+          Folosite{" "}
+          <span className="font-semibold tabular-nums text-slate-800">
+            {row.folosite}
+          </span>
+        </p>
+        <p className={ramaseNegative ? "text-rose-600" : "text-slate-600"}>
+          Rămase{" "}
+          <span className="font-semibold tabular-nums">
+            {row.zileCoAn === 0 && row.folosite === 0 ? "—" : row.ramase}
+          </span>
+          {ramaseNegative && (
+            <span className="ml-1 text-xs font-medium text-rose-500">
+              depășit
+            </span>
+          )}
+        </p>
+      </div>
+    </article>
+  );
+}
+
+function ConcediuRow({
+  row,
+  onSaved,
+  onError,
+  onStatus,
+}: {
+  row: ConcediuDto;
+  onSaved: (next: ConcediuDto) => void;
+  onError: (msg: string) => void;
+  onStatus: (msg: string) => void;
+}) {
+  const { draft, setDraft, saving, save } = useConcediuEdit(
+    row,
+    onSaved,
+    onError,
+    onStatus,
+  );
   const ramaseNegative = row.ramase < 0;
 
   return (
@@ -170,6 +254,19 @@ export default function ConcediiPage() {
     window.setTimeout(() => setStatus(null), 2000);
   }
 
+  function onSaved(next: ConcediuDto) {
+    setRows((prev) => prev.map((r) => (r.id === next.id ? next : r)));
+  }
+
+  const [desktopLayout, setDesktopLayout] = useState(true);
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 1024px)");
+    const apply = () => setDesktopLayout(mq.matches);
+    apply();
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
+  }, []);
+
   return (
     <main className="min-h-full flex-1 bg-slate-100 py-6 sm:py-8">
       <div className="mx-auto w-full max-w-3xl px-4 sm:px-6">
@@ -189,7 +286,7 @@ export default function ConcediiPage() {
             </div>
             <Link
               href="/"
-              className="shrink-0 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm font-medium text-slate-700 transition-colors duration-150 hover:border-sky-300 hover:bg-sky-50 hover:text-sky-800"
+              className="shrink-0 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-center text-sm font-medium text-slate-700 transition-colors duration-150 hover:border-sky-300 hover:bg-sky-50 hover:text-sky-800 sm:py-2"
             >
               ← Înapoi la grilă
             </Link>
@@ -228,44 +325,61 @@ export default function ConcediiPage() {
             )}
           </div>
 
-          <div className="overflow-hidden rounded-xl border border-slate-200">
-            <table className="w-full border-collapse text-left">
-              <thead>
-                <tr className="border-b border-slate-200 bg-slate-50 text-xs font-semibold tracking-wide text-slate-500 uppercase">
-                  <th className="px-4 py-3">Nume</th>
-                  <th className="px-4 py-3">Zile CO alocate</th>
-                  <th className="px-4 py-3">Folosite</th>
-                  <th className="px-4 py-3">Rămase</th>
-                </tr>
-              </thead>
-              <tbody>
-                {!loading && rows.length === 0 ? (
-                  <tr>
-                    <td
-                      colSpan={4}
-                      className="px-4 py-10 text-center text-sm text-slate-500"
-                    >
-                      Niciun angajat activ.
-                    </td>
+          {/* Mobil: carduri · Desktop (≥lg): tabel — o singură variantă montată */}
+          {!desktopLayout ? (
+            <div className="space-y-3">
+              {!loading && rows.length === 0 ? (
+                <p className="rounded-xl border border-dashed border-slate-200 px-4 py-10 text-center text-sm text-slate-500">
+                  Niciun angajat activ.
+                </p>
+              ) : (
+                rows.map((row) => (
+                  <ConcediuCard
+                    key={`${an}-${row.id}`}
+                    row={row}
+                    onSaved={onSaved}
+                    onError={setError}
+                    onStatus={flash}
+                  />
+                ))
+              )}
+            </div>
+          ) : (
+            <div className="overflow-hidden rounded-xl border border-slate-200">
+              <table className="w-full border-collapse text-left">
+                <thead>
+                  <tr className="border-b border-slate-200 bg-slate-50 text-xs font-semibold tracking-wide text-slate-500 uppercase">
+                    <th className="px-4 py-3">Nume</th>
+                    <th className="px-4 py-3">Zile CO alocate</th>
+                    <th className="px-4 py-3">Folosite</th>
+                    <th className="px-4 py-3">Rămase</th>
                   </tr>
-                ) : (
-                  rows.map((row) => (
-                    <ConcediuRow
-                      key={`${an}-${row.id}`}
-                      row={row}
-                      onSaved={(next) => {
-                        setRows((prev) =>
-                          prev.map((r) => (r.id === next.id ? next : r)),
-                        );
-                      }}
-                      onError={setError}
-                      onStatus={flash}
-                    />
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {!loading && rows.length === 0 ? (
+                    <tr>
+                      <td
+                        colSpan={4}
+                        className="px-4 py-10 text-center text-sm text-slate-500"
+                      >
+                        Niciun angajat activ.
+                      </td>
+                    </tr>
+                  ) : (
+                    rows.map((row) => (
+                      <ConcediuRow
+                        key={`${an}-${row.id}`}
+                        row={row}
+                        onSaved={onSaved}
+                        onError={setError}
+                        onStatus={flash}
+                      />
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </div>
     </main>

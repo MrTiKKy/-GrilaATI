@@ -33,7 +33,7 @@ Deschide [http://localhost:3000](http://localhost:3000) → redirect la `/login`
 
 | Măsură | Detalii |
 |--------|---------|
-| Auth | Email + parolă (tabel `users`, bcrypt) + cookie JWT HttpOnly (`jose`, 12h) |
+| Auth | Email + parolă (tabel `users`, bcrypt) + cookie JWT HttpOnly (`jose`, 7 zile) |
 | Middleware | Protejează pagini + `/api/*` (except `/login`, `/api/auth/login`) |
 | Snapshot PDF | Construit pe server din DB la `POST /api/grafice` |
 | Rate limit | In-memory pe IP (scrieri / citiri / login) |

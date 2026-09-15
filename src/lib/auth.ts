@@ -1,7 +1,13 @@
 import { SignJWT, jwtVerify } from "jose";
 
 export const SESSION_COOKIE = "grila_session";
-export const SESSION_MAX_AGE_SEC = 60 * 60 * 12; // 12h
+export const SESSION_MAX_AGE_SEC = 60 * 60 * 24 * 7; // 7 zile
+
+export type SessionPayload = {
+  userId: string;
+  email: string;
+  role: string;
+};
 
 function getSecretKey(): Uint8Array {
   const secret = process.env.SESSION_SECRET;
@@ -21,8 +27,15 @@ function tryGetSecretKey(): Uint8Array | null {
   }
 }
 
-export async function createSessionToken(): Promise<string> {
-  return new SignJWT({ role: "editor" })
+export async function createSessionToken(user: {
+  userId: string;
+  email: string;
+}): Promise<string> {
+  return new SignJWT({
+    role: "editor",
+    userId: user.userId,
+    email: user.email.trim().toLowerCase(),
+  })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime(`${SESSION_MAX_AGE_SEC}s`)
@@ -40,6 +53,28 @@ export async function verifySessionToken(
     return true;
   } catch {
     return false;
+  }
+}
+
+export async function readSessionPayload(
+  token: string | undefined | null,
+): Promise<SessionPayload | null> {
+  if (!token) return null;
+  const key = tryGetSecretKey();
+  if (!key) return null;
+  try {
+    const { payload } = await jwtVerify(token, key);
+    const userId = payload.userId;
+    const email = payload.email;
+    if (typeof userId !== "string" || typeof email !== "string") return null;
+    if (!userId || !email) return null;
+    return {
+      userId,
+      email: email.toLowerCase(),
+      role: typeof payload.role === "string" ? payload.role : "editor",
+    };
+  } catch {
+    return null;
   }
 }
 

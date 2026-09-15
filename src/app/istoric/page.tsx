@@ -197,24 +197,31 @@ export default function IstoricPage() {
                             {item.titlu}
                           </p>
                         </div>
-                        <div className="flex shrink-0 flex-wrap gap-2">
+                        <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap">
                           <button
                             type="button"
                             disabled={busyId === item.id}
                             onClick={() =>
                               void regenerate(item.id, item.an, item.luna)
                             }
-                            className="rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 transition-colors duration-150 hover:border-sky-300 hover:bg-sky-50 hover:text-sky-800 disabled:opacity-50"
+                            className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-medium text-slate-700 transition-colors duration-150 hover:border-sky-300 hover:bg-sky-50 hover:text-sky-800 disabled:opacity-50 sm:w-auto sm:py-2"
                           >
-                            {busyId === item.id
-                              ? "Se procesează…"
-                              : "Generează PDF din nou"}
+                            {busyId === item.id ? (
+                              "Se procesează…"
+                            ) : (
+                              <>
+                                <span className="sm:hidden">PDF</span>
+                                <span className="hidden sm:inline">
+                                  Generează PDF din nou
+                                </span>
+                              </>
+                            )}
                           </button>
                           <button
                             type="button"
                             disabled={busyId === item.id}
                             onClick={() => void deleteItem(item)}
-                            className="rounded-xl border border-rose-200 bg-white px-3.5 py-2 text-sm font-medium text-rose-700 transition-colors duration-150 hover:border-rose-300 hover:bg-rose-50 disabled:opacity-50"
+                            className="w-full rounded-xl border border-rose-200 bg-white px-3.5 py-2.5 text-sm font-medium text-rose-700 transition-colors duration-150 hover:border-rose-300 hover:bg-rose-50 disabled:opacity-50 sm:w-auto sm:py-2"
                           >
                             Șterge
                           </button>
