@@ -4,9 +4,10 @@ import {
   sessionCookieOptions,
   SESSION_COOKIE,
 } from "@/lib/auth";
-import { verifyPassword } from "@/lib/password";
+import { verifyCredentials } from "@/lib/password";
 import { writeAudit } from "@/lib/audit";
 import { clientKey, rateLimit } from "@/lib/rateLimit";
+import { readJsonLimited } from "@/lib/readJsonLimited";
 
 export async function POST(request: Request) {
   const ip = clientKey(request);
@@ -22,17 +23,37 @@ export async function POST(request: Request) {
   }
 
   try {
-    const body = (await request.json()) as { password?: string };
-    const password = typeof body.password === "string" ? body.password : "";
+    const parsed = await readJsonLimited<{
+      email?: string;
+      password?: string;
+    }>(request, 4_096);
+    if (!parsed.ok) return parsed.response;
 
-    if (!verifyPassword(password)) {
+    const email =
+      typeof parsed.data.email === "string" ? parsed.data.email : "";
+    const password =
+      typeof parsed.data.password === "string" ? parsed.data.password : "";
+
+    if (!email || !password || email.length > 254 || password.length > 256) {
       await writeAudit({
         action: "login_fail",
         ip,
-        detail: { reason: "bad_password" },
+        detail: { reason: "invalid_input" },
       });
       return NextResponse.json(
-        { error: "Parolă incorrectă" },
+        { error: "Email sau parolă invalide" },
+        { status: 401 },
+      );
+    }
+
+    if (!verifyCredentials(email, password)) {
+      await writeAudit({
+        action: "login_fail",
+        ip,
+        detail: { reason: "bad_credentials" },
+      });
+      return NextResponse.json(
+        { error: "Email sau parolă invalide" },
         { status: 401 },
       );
     }
@@ -40,12 +61,16 @@ export async function POST(request: Request) {
     const token = await createSessionToken();
     const response = NextResponse.json({ ok: true });
     response.cookies.set(SESSION_COOKIE, token, sessionCookieOptions());
-    await writeAudit({ action: "login_ok", ip });
+    await writeAudit({
+      action: "login_ok",
+      ip,
+      detail: { email: email.trim().toLowerCase() },
+    });
     return response;
   } catch (error) {
     console.error("POST /api/auth/login", error);
     return NextResponse.json(
-      { error: "Autentificare eșuată (verifică SESSION_SECRET / APP_PASSWORD)" },
+      { error: "Autentificare temporar indisponibilă" },
       { status: 500 },
     );
   }

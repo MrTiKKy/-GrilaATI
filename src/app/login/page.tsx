@@ -6,6 +6,7 @@ import { FormEvent, Suspense, useState } from "react";
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -18,7 +19,7 @@ function LoginForm() {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({ email, password }),
       });
       const data = (await res.json()) as { error?: string };
       if (!res.ok) {
@@ -42,21 +43,34 @@ function LoginForm() {
         className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-6 shadow-sm shadow-slate-200/60"
       >
         <p className="text-xs font-medium tracking-wide text-sky-700 uppercase">
-          Acces secție
+          Acces securizat
         </p>
         <h1 className="mt-1 text-xl font-semibold text-slate-900">
           Autentificare Grila ATI
         </h1>
         <p className="mt-1 text-sm text-slate-500">
-          Introdu parola de secție pentru a continua.
+          Introdu emailul și parola pentru a continua.
         </p>
 
         <label className="mt-5 block text-xs font-medium tracking-wide text-slate-500 uppercase">
+          Email
+          <input
+            type="email"
+            autoFocus
+            autoComplete="username"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-400/20"
+          />
+        </label>
+
+        <label className="mt-3 block text-xs font-medium tracking-wide text-slate-500 uppercase">
           Parolă
           <input
             type="password"
-            autoFocus
             autoComplete="current-password"
+            required
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-400/20"
@@ -69,7 +83,7 @@ function LoginForm() {
 
         <button
           type="submit"
-          disabled={loading || !password}
+          disabled={loading || !email || !password}
           className="mt-5 w-full rounded-xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-sky-700 disabled:opacity-50"
         >
           {loading ? "Se verifică…" : "Intră"}

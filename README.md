@@ -4,23 +4,17 @@ Programare lunară ATI/anestezie — Next.js App Router + Neon Postgres (`@neond
 
 ## Setup local
 
-1. Copiază variabilele de mediu:
-
-```bash
-cp .env.example .env
-```
-
-2. Completează în `.env`:
+1. Creează `.env` local (nu se commită) cu:
    - `DATABASE_URL` — connection string Neon
-   - `APP_PASSWORD` — parola / PIN de secție
+   - `AUTH_EMAIL` / `AUTH_PASSWORD` — contul cu care te loghezi
    - `SESSION_SECRET` — secret cookie (≥16 caractere; `openssl rand -hex 32`)
 
-3. Rulează o dată în Neon SQL Editor (dacă lipseau):
+2. Rulează o dată în Neon SQL Editor (dacă lipseau):
    - `sql/grafice_finale.sql`
    - `sql/add_ciorna.sql`
    - `sql/audit_log.sql`
 
-4. Instalează și pornește:
+3. Instalează și pornește:
 
 ```bash
 npm install
@@ -33,7 +27,7 @@ Deschide [http://localhost:3000](http://localhost:3000) → redirect la `/login`
 
 | Măsură | Detalii |
 |--------|---------|
-| Auth | Parolă de secție + cookie JWT HttpOnly (`jose`, 12h) |
+| Auth | Email + parolă (din `.env`) + cookie JWT HttpOnly (`jose`, 12h) |
 | Middleware | Protejează pagini + `/api/*` (except `/login`, `/api/auth/login`) |
 | Snapshot PDF | Construit pe server din DB la `POST /api/grafice` |
 | Rate limit | In-memory pe IP (scrieri / citiri / login) |
