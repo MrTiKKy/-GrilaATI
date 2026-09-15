@@ -1,36 +1,44 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Grila ATI
 
-## Getting Started
+Programare lunară pentru o secție ATI/anestezie (Next.js App Router + Prisma + PostgreSQL pe Neon).
 
-First, run the development server:
+## Setup local
+
+1. Copiază variabilele de mediu:
+
+```bash
+cp .env.example .env
+```
+
+2. Conectează Neon: în [Neon Console](https://console.neon.tech) creează un proiect, copiază connection string-ul și pune-l în `.env` ca `DATABASE_URL`.
+
+3. Instalează dependențele, generează clientul Prisma și aplică migrările:
+
+```bash
+npm install
+npm run prisma:generate
+npm run prisma:migrate
+```
+
+La `prisma:migrate` ți se cere un nume de migrare (ex. `init`).
+
+4. Pornește app-ul:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Deschide [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Scripturi Prisma
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Script | Comandă |
+|--------|---------|
+| Generează clientul | `npm run prisma:generate` |
+| Migrări (dev) | `npm run prisma:migrate` |
+| Studio (UI DB) | `npm run prisma:studio` |
 
-## Learn More
+## Model date
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- **Staff** — personal (`nume`, `zileCoRamase`)
+- **Programare** — casuță pe zi (`valoare`: `reanim` \| `anest` \| `co` \| `cm`, extensibil), unic pe `(staffId, data)`

@@ -1,0 +1,30 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// Tipuri uzuale pentru valoare: reanim | anest | co | cm (extensibil)
+model Staff {
+  id           String       @id @default(cuid())
+  nume         String
+  zileCoRamase Int
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  programari   Programare[]
+}
+
+model Programare {
+  id        String   @id @default(cuid())
+  staffId   String
+  staff     Staff    @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  data      DateTime @db.Date
+  valoare   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([staffId, data])
+}
