@@ -1,22 +1,27 @@
 "use client";
 
 import { useId, useState } from "react";
+import { postLabelSingular, type AngajatPost } from "@/lib/post";
 
 type AddStaffDialogProps = {
   open: boolean;
+  post: AngajatPost;
   onClose: () => void;
   onSubmit: (name: string) => void;
 };
 
 function DialogForm({
+  post,
   onClose,
   onSubmit,
 }: {
+  post: AngajatPost;
   onClose: () => void;
   onSubmit: (name: string) => void;
 }) {
   const [name, setName] = useState("");
   const titleId = useId();
+  const kind = postLabelSingular(post);
 
   function submit() {
     const trimmed = name.trim();
@@ -40,11 +45,8 @@ function DialogForm({
         className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-5 shadow-xl shadow-slate-900/10"
       >
         <h2 id={titleId} className="text-base font-semibold text-slate-900">
-          Adaugă angajat
+          Adaugă {kind}
         </h2>
-        <p className="mt-1 text-sm text-slate-500">
-          Numele va apărea cu majuscule în grilă.
-        </p>
         <label className="mt-4 block text-xs font-medium tracking-wide text-slate-500 uppercase">
           Nume
           <input
@@ -88,7 +90,19 @@ function DialogForm({
   );
 }
 
-export function AddStaffDialog({ open, onClose, onSubmit }: AddStaffDialogProps) {
+export function AddStaffDialog({
+  open,
+  post,
+  onClose,
+  onSubmit,
+}: AddStaffDialogProps) {
   if (!open) return null;
-  return <DialogForm key="add-staff" onClose={onClose} onSubmit={onSubmit} />;
+  return (
+    <DialogForm
+      key={`add-staff-${post}`}
+      post={post}
+      onClose={onClose}
+      onSubmit={onSubmit}
+    />
+  );
 }

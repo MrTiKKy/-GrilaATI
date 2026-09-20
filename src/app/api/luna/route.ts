@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { guardRead } from "@/lib/apiGuard";
+import { isAngajatPost } from "@/lib/post";
 import { parseMonth, parseYear } from "@/lib/validate";
 import {
   toDateString,
@@ -35,6 +36,7 @@ export async function GET(request: Request) {
       SELECT
         a.id,
         a.nume,
+        COALESCE(a.post, 'asistent') AS post,
         a.zile_co_an,
         a.ordine,
         COALESCE((
@@ -61,9 +63,11 @@ export async function GET(request: Request) {
     const angajati: AngajatDto[] = angajatiRows.map((row) => {
       const zileCoAn = Number(row.zile_co_an);
       const zileCoFolosite = Number(row.zile_co_folosite);
+      const postRaw = String(row.post ?? "asistent");
       return {
         id: String(row.id),
         nume: String(row.nume),
+        post: isAngajatPost(postRaw) ? postRaw : "asistent",
         zileCoAn,
         zileCoFolosite,
         zileCoRamase: zileCoAn - zileCoFolosite,
@@ -96,9 +100,10 @@ export async function GET(request: Request) {
     return NextResponse.json(body);
   } catch (error) {
     console.error("GET /api/luna", error);
-    return NextResponse.json(
-      { error: "Nu s-au putut încărca datele lunii" },
-      { status: 500 },
-    );
+    const message =
+      error instanceof Error && /column .*post/i.test(error.message)
+        ? "Coloana post lipsește — rulează sql/add_post.sql în Neon"
+        : "Nu s-au putut încărca datele lunii";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

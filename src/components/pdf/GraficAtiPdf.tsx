@@ -270,7 +270,6 @@ export function GraficAtiPdf({ data }: { data: GraficPdfData }) {
             <Text style={styles.footerText}>
               MEDIC SEF: DR. SUSANU CAROLINA
             </Text>
-            <Text style={styles.footerText}>DELEGAT</Text>
             <Text style={styles.footerText}>AS SEF: POPA NICOLETA</Text>
           </View>
         </Page>

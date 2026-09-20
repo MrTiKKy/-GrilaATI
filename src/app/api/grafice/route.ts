@@ -6,10 +6,15 @@ import {
   buildMonthTitle,
 } from "@/lib/buildGraficSnapshot";
 import { getDb } from "@/lib/db";
+import { isAngajatPost } from "@/lib/post";
 import { clientKey } from "@/lib/rateLimit";
 import { readJsonLimited } from "@/lib/readJsonLimited";
 import { parseMonth, parseYear } from "@/lib/validate";
-import type { GraficFinalMeta, GraficeListResponse } from "@/lib/types";
+import type {
+  CreateGraficBody,
+  GraficFinalMeta,
+  GraficeListResponse,
+} from "@/lib/types";
 
 export async function GET(request: Request) {
   const denied = await guardRead(request);
@@ -84,10 +89,7 @@ export async function POST(request: Request) {
   if (denied) return denied;
 
   try {
-    const parsed = await readJsonLimited<{ an?: unknown; luna?: unknown }>(
-      request,
-      4_096,
-    );
+    const parsed = await readJsonLimited<CreateGraficBody>(request, 4_096);
     if (!parsed.ok) return parsed.response;
 
     const an = parseYear(parsed.data.an);
@@ -99,8 +101,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "luna invalidă" }, { status: 400 });
     }
 
-    const snapshot = await buildGraficSnapshotFromDb(an, luna);
-    const titlu = buildMonthTitle(an, luna);
+    const post = isAngajatPost(parsed.data.post)
+      ? parsed.data.post
+      : "asistent";
+
+    const snapshot = await buildGraficSnapshotFromDb(an, luna, post);
+    const titlu = buildMonthTitle(an, luna, post);
 
     const sql = getDb();
     const inserted = await sql`
@@ -117,7 +123,7 @@ export async function POST(request: Request) {
     await writeAudit({
       action: "grafic_save",
       resource: String(row.id),
-      detail: { an, luna, rows: snapshot.rows.length },
+      detail: { an, luna, post, rows: snapshot.rows.length },
       ip: clientKey(request),
     });
 
@@ -140,9 +146,11 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error("POST /api/grafice", error);
     const message =
-      error instanceof Error && /grafice_finale/i.test(error.message)
-        ? "Tabelul grafice_finale lipsește — rulează sql/grafice_finale.sql în Neon"
-        : "Nu s-a putut salva graficul";
+      error instanceof Error && /column .*post/i.test(error.message)
+        ? "Coloana post lipsește — rulează sql/add_post.sql în Neon"
+        : error instanceof Error && /grafice_finale/i.test(error.message)
+          ? "Tabelul grafice_finale lipsește — rulează sql/grafice_finale.sql în Neon"
+          : "Nu s-a putut salva graficul";
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

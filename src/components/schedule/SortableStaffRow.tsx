@@ -3,11 +3,13 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { CSSProperties, ReactNode } from "react";
+import type { AngajatPost } from "@/lib/post";
 import { CellFocus } from "./CellFocus";
 
 export type StaffMember = {
   id: string;
   name: string;
+  post: AngajatPost;
   zileCoAn: number;
   zileCoFolosite: number;
   zileCoRamase: number;
@@ -28,6 +30,8 @@ type SortableStaffRowProps = {
   onCellFocus: () => void;
   /** Ascunde coloana O.SD (mobil) */
   showOsd?: boolean;
+  /** Total ore S+D (fără vineri) */
+  osdHours?: number;
   /** Nume mai îngust (mobil / săptămână) */
   compactName?: boolean;
 };
@@ -84,6 +88,7 @@ export function SortableStaffRow({
   onDelete,
   onCellFocus,
   showOsd = true,
+  osdHours = 0,
   compactName = false,
 }: SortableStaffRowProps) {
   const {
@@ -96,8 +101,11 @@ export function SortableStaffRow({
   } = useSortable({ id: staff.id });
 
   const style: CSSProperties = {
-    transform: CSS.Transform.toString(transform),
-    transition: transition ?? "transform 150ms ease",
+    // transform doar la drag — altfel translate3d(0,0,0) strică alinierea borderelor
+    ...(transform
+      ? { transform: CSS.Transform.toString(transform) }
+      : {}),
+    transition: isDragging ? (transition ?? "transform 150ms ease") : undefined,
     opacity: isDragging ? 0.85 : 1,
     position: "relative",
     zIndex: isDragging ? 30 : undefined,
@@ -114,16 +122,14 @@ export function SortableStaffRow({
     >
       <th
         scope="row"
-        className="sticky left-0 z-10 border-0 border-b border-r border-b-slate-200 border-r-slate-400 bg-white px-1 py-0 text-left group-hover:bg-slate-50 lg:px-1.5"
+        className={[
+          "sticky left-0 z-10 border-0 border-b border-r border-b-slate-200 border-r-slate-300 bg-white py-0 text-left align-middle group-hover:bg-slate-50",
+          compactName
+            ? "w-[4.75rem] max-w-[4.75rem] px-1"
+            : "min-w-[168px] px-3",
+        ].join(" ")}
       >
-        <div
-          className={[
-            "flex items-center gap-0.5",
-            compactName
-              ? "min-w-0 w-[4.75rem] max-w-[4.75rem]"
-              : "min-w-[7.5rem] lg:min-w-[168px]",
-          ].join(" ")}
-        >
+        <div className="flex min-w-0 items-center gap-0.5">
           <button
             type="button"
             className="hidden h-7 w-7 shrink-0 cursor-grab items-center justify-center rounded-md text-slate-400 transition-colors duration-150 hover:bg-slate-100 hover:text-slate-600 active:cursor-grabbing touch-none lg:flex"
@@ -183,7 +189,7 @@ export function SortableStaffRow({
           <td
             key={`${staff.id}-${col.key}`}
             className={[
-              "border-0 p-0",
+              "border-0 border-b border-b-slate-200 p-0 align-middle",
               weekend ? "bg-slate-100" : "bg-white",
             ].join(" ")}
           >
@@ -201,8 +207,16 @@ export function SortableStaffRow({
         );
       })}
       {showOsd && (
-        <td className="border-0 border-b border-l border-b-slate-200 border-l-slate-400 bg-slate-50/80 px-1.5 text-center text-slate-400">
-          —
+        <td
+          className={[
+            "min-w-[2.75rem] border-0 border-b border-l border-b-slate-200 border-l-slate-300 bg-slate-50/80 px-1.5 text-center align-middle text-[11px] tabular-nums",
+            osdHours > 0
+              ? "font-semibold text-slate-800"
+              : "font-medium text-slate-400",
+          ].join(" ")}
+          title="Ore Sâmbătă + Duminică (O.SD)"
+        >
+          {osdHours > 0 ? osdHours : "—"}
         </td>
       )}
     </tr>

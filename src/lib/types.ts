@@ -1,3 +1,7 @@
+import type { AngajatPost } from "@/lib/post";
+
+export type { AngajatPost };
+
 export const PROGRAMARE_VALUES = [
   "1",
   "2",
@@ -6,6 +10,8 @@ export const PROGRAMARE_VALUES = [
   "L",
   "CO",
   "CM",
+  "-",
+  "CIC",
 ] as const;
 
 export type ProgramareValoare = (typeof PROGRAMARE_VALUES)[number];
@@ -17,6 +23,8 @@ export type SectieValoare = (typeof SECTIE_VALUES)[number];
 export type AngajatDto = {
   id: string;
   nume: string;
+  /** asistent | infirmier */
+  post: AngajatPost;
   zileCoAn: number;
   zileCoFolosite: number;
   zileCoRamase: number;
@@ -41,6 +49,7 @@ export type LunaResponse = {
 export type ConcediuDto = {
   id: string;
   nume: string;
+  post: AngajatPost;
   zileCoAn: number;
   folosite: number;
   ramase: number;
@@ -58,6 +67,8 @@ export type UpdateConcediuBody = {
 export type CreateAngajatBody = {
   nume: string;
   zileCoAn?: number;
+  /** default: asistent */
+  post?: AngajatPost;
 };
 
 export type CreateAngajatResponse = {
@@ -103,6 +114,8 @@ export type GraficFinalDetail = GraficFinalMeta & {
 export type CreateGraficBody = {
   an: number;
   luna: number;
+  /** asistent | infirmier — PDF separat pe tip */
+  post?: AngajatPost;
 };
 
 export type GraficeListResponse = {

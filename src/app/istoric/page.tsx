@@ -94,7 +94,10 @@ export default function IstoricPage() {
       if (!res.ok) throw new Error(await readError(res));
       const detail = (await res.json()) as GraficFinalDetail;
       const pdfData: GraficPdfData = detail.snapshot;
-      const fileName = `grafic-ati-${an}-${String(luna).padStart(2, "0")}-arhiva.pdf`;
+      const kind = /INFIRMIERE/i.test(detail.titlu || pdfData.title)
+        ? "infirmiere"
+        : "asistenti";
+      const fileName = `grafic-${kind}-${an}-${String(luna).padStart(2, "0")}-arhiva.pdf`;
       await downloadGraficPdf(pdfData, fileName);
       setStatus("PDF regenerat din arhivă");
       window.setTimeout(() => setStatus(null), 2500);
@@ -139,10 +142,6 @@ export default function IstoricPage() {
               <h1 className="mt-1 text-xl font-semibold tracking-tight text-slate-900">
                 Istoric grafice salvate
               </h1>
-              <p className="mt-1 text-sm text-slate-500">
-                Fiecare export PDF salvează un snapshot pe lună. Poți regenera
-                PDF-ul oricând din versiunea arhivată.
-              </p>
             </div>
             <Link
               href="/"
@@ -164,8 +163,7 @@ export default function IstoricPage() {
 
           {!loading && grouped.length === 0 ? (
             <p className="rounded-xl border border-dashed border-slate-200 px-4 py-10 text-center text-sm text-slate-500">
-              Nicio salvare încă. Din grilă apasă „Export PDF test” — se salvează
-              automat în arhivă.
+              Nicio salvare încă.
             </p>
           ) : (
             <div className="space-y-5">

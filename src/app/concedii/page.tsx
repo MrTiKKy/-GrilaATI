@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { postLabel, type AngajatPost } from "@/lib/post";
 import type { ConcediiResponse, ConcediuDto } from "@/lib/types";
 
 async function readError(res: Response): Promise<string> {
@@ -213,7 +214,8 @@ function ConcediuRow({
 export default function ConcediiPage() {
   const currentYear = useMemo(() => new Date().getFullYear(), []);
   const [an, setAn] = useState(currentYear);
-  const [rows, setRows] = useState<ConcediuDto[]>([]);
+  const [post, setPost] = useState<AngajatPost>("asistent");
+  const [allRows, setAllRows] = useState<ConcediuDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
@@ -223,16 +225,22 @@ export default function ConcediiPage() {
     [currentYear],
   );
 
+  const rows = useMemo(
+    () => allRows.filter((r) => r.post === post),
+    [allRows, post],
+  );
+
   useEffect(() => {
     let cancelled = false;
 
     async function run() {
+      setLoading(true);
       try {
         const res = await fetch(`/api/concedii?an=${an}`);
         if (!res.ok) throw new Error(await readError(res));
         const data = (await res.json()) as ConcediiResponse;
         if (cancelled) return;
-        setRows(data.angajati);
+        setAllRows(data.angajati);
         setError(null);
       } catch (e) {
         if (!cancelled) {
@@ -255,7 +263,7 @@ export default function ConcediiPage() {
   }
 
   function onSaved(next: ConcediuDto) {
-    setRows((prev) => prev.map((r) => (r.id === next.id ? next : r)));
+    setAllRows((prev) => prev.map((r) => (r.id === next.id ? next : r)));
   }
 
   const [desktopLayout, setDesktopLayout] = useState(true);
@@ -267,6 +275,11 @@ export default function ConcediiPage() {
     return () => mq.removeEventListener("change", apply);
   }, []);
 
+  const emptyLabel =
+    post === "infirmier"
+      ? "Nicio infirmieră activă."
+      : "Niciun asistent activ.";
+
   return (
     <main className="min-h-full flex-1 bg-slate-100 py-6 sm:py-8">
       <div className="mx-auto w-full max-w-3xl px-4 sm:px-6">
@@ -274,15 +287,11 @@ export default function ConcediiPage() {
           <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <p className="text-xs font-medium tracking-wide text-sky-700 uppercase">
-                Concediu de odihnă
+                Concediu de odihnă · {postLabel(post)}
               </p>
               <h1 className="mt-1 text-xl font-semibold tracking-tight text-slate-900">
                 Zile CO pe angajat
               </h1>
-              <p className="mt-1 text-sm text-slate-500">
-                Alocate = setate aici · Folosite = zile cu CO în grilă · Rămase =
-                alocate − folosite
-              </p>
             </div>
             <Link
               href="/"
@@ -290,6 +299,38 @@ export default function ConcediiPage() {
             >
               ← Înapoi la grilă
             </Link>
+          </div>
+
+          <div
+            className="mb-4 flex gap-1 rounded-xl border border-slate-200 bg-slate-50 p-1"
+            role="tablist"
+            aria-label="Tip personal"
+          >
+            {(
+              [
+                { id: "asistent" as const, label: "Asistenți" },
+                { id: "infirmier" as const, label: "Infirmiere" },
+              ] as const
+            ).map((tab) => {
+              const selected = post === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={selected}
+                  onClick={() => setPost(tab.id)}
+                  className={[
+                    "flex-1 rounded-lg px-3 py-2 text-sm font-semibold transition-colors duration-150",
+                    selected
+                      ? "bg-white text-sky-800 shadow-sm"
+                      : "text-slate-600 hover:text-slate-900",
+                  ].join(" ")}
+                >
+                  {tab.label}
+                </button>
+              );
+            })}
           </div>
 
           <div className="mb-4 flex flex-wrap items-center gap-3">
@@ -325,12 +366,11 @@ export default function ConcediiPage() {
             )}
           </div>
 
-          {/* Mobil: carduri · Desktop (≥lg): tabel — o singură variantă montată */}
           {!desktopLayout ? (
             <div className="space-y-3">
               {!loading && rows.length === 0 ? (
                 <p className="rounded-xl border border-dashed border-slate-200 px-4 py-10 text-center text-sm text-slate-500">
-                  Niciun angajat activ.
+                  {emptyLabel}
                 </p>
               ) : (
                 rows.map((row) => (
@@ -362,7 +402,7 @@ export default function ConcediiPage() {
                         colSpan={4}
                         className="px-4 py-10 text-center text-sm text-slate-500"
                       >
-                        Niciun angajat activ.
+                        {emptyLabel}
                       </td>
                     </tr>
                   ) : (

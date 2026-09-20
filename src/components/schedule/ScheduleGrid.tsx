@@ -16,6 +16,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   useCallback,
   useEffect,
@@ -26,10 +27,19 @@ import {
   type TouchEvent,
 } from "react";
 import type { LunaResponse } from "@/lib/types";
+import {
+  buildGraficTitle,
+  graficPdfFileName,
+  postFromTabParam,
+  postLabel,
+  tabParamFromPost,
+  type AngajatPost,
+} from "@/lib/post";
+import { parseMonth, parseYear } from "@/lib/validate";
 import { AddStaffDialog } from "./AddStaffDialog";
 import { CellFocus } from "./CellFocus";
 import {
-  RightOptionPanel,
+  CellOptionPopup,
   type ConfirmPayload,
   type PanelContext,
 } from "./RightOptionPanel";
@@ -40,6 +50,7 @@ import {
 } from "./SortableStaffRow";
 import { downloadGraficPdf } from "@/components/pdf/exportGraficPdf";
 import type { GraficPdfData } from "@/components/pdf/GraficAtiPdf";
+import { totalOsdOre } from "@/lib/weekendOre";
 
 const DAY_ABBR = ["D", "L", "Ma", "Mi", "J", "V", "S"] as const;
 
@@ -118,6 +129,7 @@ function mapLunaToState(
   const staff: StaffMember[] = data.angajati.map((a) => ({
     id: a.id,
     name: a.nume,
+    post: a.post,
     zileCoAn: a.zileCoAn,
     zileCoFolosite: a.zileCoFolosite,
     zileCoRamase: a.zileCoRamase,
@@ -141,6 +153,27 @@ function mapLunaToState(
   return { staff, grid };
 }
 
+function mergeStaffOrder(
+  all: StaffMember[],
+  visibleOrdered: StaffMember[],
+  post: AngajatPost,
+): StaffMember[] {
+  const queue = [...visibleOrdered];
+  return all.map((s) => (s.post === post ? queue.shift()! : s));
+}
+
+function buildMonthQuery(
+  year: number,
+  month: number,
+  post: AngajatPost,
+): string {
+  const params = new URLSearchParams();
+  params.set("an", String(year));
+  params.set("luna", String(month));
+  params.set("tab", tabParamFromPost(post));
+  return params.toString();
+}
+
 async function readError(res: Response): Promise<string> {
   try {
     const data = (await res.json()) as { error?: string };
@@ -151,14 +184,44 @@ async function readError(res: Response): Promise<string> {
 }
 
 export function ScheduleGrid() {
-  const { year, month, monthIndex } = useMemo(() => {
-    const now = new Date();
-    return {
-      year: now.getFullYear(),
-      month: now.getMonth() + 1, // 1-indexed for API
-      monthIndex: now.getMonth(),
-    };
-  }, []);
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  const now = useMemo(() => new Date(), []);
+  const yearFromUrl = parseYear(searchParams.get("an"));
+  const monthFromUrl = parseMonth(searchParams.get("luna"));
+  const year = yearFromUrl ?? now.getFullYear();
+  const month = monthFromUrl ?? now.getMonth() + 1;
+  const monthIndex = month - 1;
+  const post = postFromTabParam(searchParams.get("tab"));
+
+  // Completează URL-ul când lipsește an/luna/tab (intrare pe / → luna curentă)
+  useEffect(() => {
+    const hasAn = searchParams.get("an") != null;
+    const hasLuna = searchParams.get("luna") != null;
+    const hasTab = searchParams.get("tab") != null;
+    if (hasAn && hasLuna && hasTab) return;
+    router.replace(`${pathname}?${buildMonthQuery(year, month, post)}`, {
+      scroll: false,
+    });
+  }, [searchParams, pathname, router, year, month, post]);
+
+  function goMonth(delta: number) {
+    const d = new Date(year, monthIndex + delta, 1);
+    router.push(
+      `${pathname}?${buildMonthQuery(d.getFullYear(), d.getMonth() + 1, post)}`,
+    );
+  }
+
+  function setPostTab(next: AngajatPost) {
+    if (next === post) return;
+    setActive(null);
+    setPanelOpen(false);
+    router.push(`${pathname}?${buildMonthQuery(year, month, next)}`, {
+      scroll: false,
+    });
+  }
 
   const dayColumns = useMemo(
     () => buildDayColumns(year, monthIndex),
@@ -171,7 +234,7 @@ export function ScheduleGrid() {
   const [isDesktop, setIsDesktop] = useState(true);
   const [weekIndex, setWeekIndex] = useState(0);
 
-  const [staff, setStaff] = useState<StaffMember[]>([]);
+  const [allStaff, setAllStaff] = useState<StaffMember[]>([]);
   const [grid, setGrid] = useState<GridState>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -186,6 +249,10 @@ export function ScheduleGrid() {
   const statusTimer = useRef<number | null>(null);
   const touchStartX = useRef<number | null>(null);
 
+  const staff = useMemo(
+    () => allStaff.filter((s) => s.post === post),
+    [allStaff, post],
+  );
   const staffIds = useMemo(() => staff.map((s) => s.id), [staff]);
 
   useEffect(() => {
@@ -260,14 +327,17 @@ export function ScheduleGrid() {
     let cancelled = false;
 
     async function run() {
+      setLoading(true);
       try {
         const res = await fetch(`/api/luna?an=${year}&luna=${month}`);
         if (!res.ok) throw new Error(await readError(res));
         const data = (await res.json()) as LunaResponse;
         if (cancelled) return;
         const mapped = mapLunaToState(data, dayColumns);
-        setStaff(mapped.staff);
+        setAllStaff(mapped.staff);
         setGrid(mapped.grid);
+        setActive(null);
+        setPanelOpen(false);
         setError(null);
       } catch (e) {
         if (!cancelled) {
@@ -299,60 +369,6 @@ export function ScheduleGrid() {
     },
     [columns.length, staff.length],
   );
-
-  // Păstrează casuța activă vizibilă (desktop: stânga panelului; mobil: bottom sheet)
-  useEffect(() => {
-    if (!panelOpen || !active) return;
-
-    const STICKY_NAME = 152;
-    const MARGIN = 20;
-
-    function scrollActiveIntoView() {
-      const container = gridRef.current;
-      const cell = container?.querySelector<HTMLElement>(
-        '[data-cell-active="true"]',
-      );
-      if (!container || !cell) return;
-
-      const isDesktopPanel = window.matchMedia("(min-width: 1024px)").matches;
-      const PANEL_WIDTH = isDesktopPanel ? 384 : 0;
-
-      const cRect = container.getBoundingClientRect();
-      const cellRect = cell.getBoundingClientRect();
-
-      const visibleRight = Math.min(
-        cRect.right,
-        window.innerWidth - PANEL_WIDTH,
-      );
-      const visibleLeft = cRect.left + (isDesktopPanel ? STICKY_NAME : 96);
-
-      let deltaX = 0;
-      if (cellRect.right > visibleRight - MARGIN) {
-        deltaX = cellRect.right - (visibleRight - MARGIN);
-      } else if (cellRect.left < visibleLeft + MARGIN) {
-        deltaX = cellRect.left - (visibleLeft + MARGIN);
-      }
-
-      let deltaY = 0;
-      if (cellRect.bottom > cRect.bottom - MARGIN) {
-        deltaY = cellRect.bottom - (cRect.bottom - MARGIN);
-      } else if (cellRect.top < cRect.top + MARGIN) {
-        deltaY = cellRect.top - (cRect.top + MARGIN);
-      }
-
-      if (deltaX !== 0 || deltaY !== 0) {
-        container.scrollBy({ left: deltaX, top: deltaY, behavior: "smooth" });
-      }
-    }
-
-    const raf = window.requestAnimationFrame(scrollActiveIntoView);
-    const t = window.setTimeout(scrollActiveIntoView, 220);
-
-    return () => {
-      window.cancelAnimationFrame(raf);
-      window.clearTimeout(t);
-    };
-  }, [active, panelOpen]);
 
   function handleKeyDown(e: KeyboardEvent<HTMLDivElement>) {
     if (!staff.length || !columns.length) return;
@@ -405,7 +421,7 @@ export function ScheduleGrid() {
 
     // Actualizează soldul CO local (optimistic)
     if (wasCo !== willBeCo) {
-      setStaff((prevStaff) =>
+      setAllStaff((prevStaff) =>
         prevStaff.map((s) => {
           if (s.id !== person.id) return s;
           const delta = willBeCo ? 1 : -1;
@@ -446,7 +462,7 @@ export function ScheduleGrid() {
         [person.id]: { ...g[person.id], [col.key]: prev },
       }));
       if (wasCo !== willBeCo) {
-        setStaff((prevStaff) =>
+        setAllStaff((prevStaff) =>
           prevStaff.map((s) => {
             if (s.id !== person.id) return s;
             const delta = wasCo ? 1 : -1;
@@ -462,7 +478,7 @@ export function ScheduleGrid() {
       setError(e instanceof Error ? e.message : "Salvare eșuată");
       return false;
     } finally {
-      gridRef.current?.focus();
+      gridRef.current?.focus({ preventScroll: true });
     }
   }
 
@@ -471,18 +487,17 @@ export function ScheduleGrid() {
     setExporting(true);
     setError(null);
     try {
-      // Snapshot construit pe server din DB (nu din stare locală)
       const saveRes = await fetch("/api/grafice", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ an: year, luna: month }),
+        body: JSON.stringify({ an: year, luna: month, post }),
       });
       if (!saveRes.ok) throw new Error(await readError(saveRes));
       const saved = (await saveRes.json()) as { snapshot: GraficPdfData };
 
-      const fileName = `grafic-ati-${year}-${String(month).padStart(2, "0")}.pdf`;
+      const fileName = graficPdfFileName(year, month, post);
       await downloadGraficPdf(saved.snapshot, fileName);
-      flashStatus("PDF descărcat + salvat în arhivă");
+      flashStatus(`PDF ${postLabel(post)} descărcat + salvat în arhivă`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Export PDF eșuat");
     } finally {
@@ -495,23 +510,25 @@ export function ScheduleGrid() {
       const res = await fetch("/api/angajati", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ nume: name }),
+        body: JSON.stringify({ nume: name, post }),
       });
       if (!res.ok) throw new Error(await readError(res));
       const data = (await res.json()) as {
         angajat: {
           id: string;
           nume: string;
+          post: AngajatPost;
           zileCoAn: number;
           zileCoFolosite: number;
           zileCoRamase: number;
         };
       };
-      setStaff((prev) => [
+      setAllStaff((prev) => [
         ...prev,
         {
           id: data.angajat.id,
           name: data.angajat.nume,
+          post: data.angajat.post,
           zileCoAn: data.angajat.zileCoAn,
           zileCoFolosite: data.angajat.zileCoFolosite,
           zileCoRamase: data.angajat.zileCoRamase,
@@ -534,11 +551,12 @@ export function ScheduleGrid() {
     if (!ok) return;
 
     const oldIndex = staff.findIndex((s) => s.id === person.id);
-    const snapshotStaff = staff;
+    const snapshotStaff = allStaff;
     const snapshotGrid = grid;
 
-    const nextStaff = staff.filter((s) => s.id !== person.id);
-    setStaff(nextStaff);
+    const nextAll = allStaff.filter((s) => s.id !== person.id);
+    const nextVisible = nextAll.filter((s) => s.post === post);
+    setAllStaff(nextAll);
     setGrid((prev) => {
       const next = { ...prev };
       delete next[person.id];
@@ -546,14 +564,14 @@ export function ScheduleGrid() {
     });
 
     if (active && oldIndex >= 0) {
-      if (nextStaff.length === 0) {
+      if (nextVisible.length === 0) {
         setActive(null);
         setPanelOpen(false);
       } else {
         const newRow =
           active.row > oldIndex
             ? active.row - 1
-            : Math.min(active.row, nextStaff.length - 1);
+            : Math.min(active.row, nextVisible.length - 1);
         setActive({ row: Math.max(0, newRow), col: active.col });
       }
     }
@@ -563,7 +581,7 @@ export function ScheduleGrid() {
       if (!res.ok) throw new Error(await readError(res));
       flashStatus("Angajat șters");
     } catch (e) {
-      setStaff(snapshotStaff);
+      setAllStaff(snapshotStaff);
       setGrid(snapshotGrid);
       setError(e instanceof Error ? e.message : "Ștergere eșuată");
     }
@@ -582,9 +600,10 @@ export function ScheduleGrid() {
     const newIndex = staff.findIndex((s) => s.id === over.id);
     if (oldIndex < 0 || newIndex < 0) return;
 
-    const prevStaff = staff;
-    const nextStaff = arrayMove(staff, oldIndex, newIndex);
-    setStaff(nextStaff);
+    const prevAll = allStaff;
+    const nextVisible = arrayMove(staff, oldIndex, newIndex);
+    const nextAll = mergeStaffOrder(allStaff, nextVisible, post);
+    setAllStaff(nextAll);
 
     if (active) {
       if (active.row === oldIndex) {
@@ -600,12 +619,12 @@ export function ScheduleGrid() {
       const res = await fetch("/api/angajati/ordine", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ids: nextStaff.map((s) => s.id) }),
+        body: JSON.stringify({ ids: nextAll.map((s) => s.id) }),
       });
       if (!res.ok) throw new Error(await readError(res));
       flashStatus("Ordine salvată");
     } catch (e) {
-      setStaff(prevStaff);
+      setAllStaff(prevAll);
       setError(e instanceof Error ? e.message : "Reordonare eșuată");
     }
   }
@@ -633,6 +652,22 @@ export function ScheduleGrid() {
   const draggingStaff = draggingId
     ? staff.find((s) => s.id === draggingId)
     : null;
+
+  const osdDays = useMemo(
+    () => dayColumns.map((c) => ({ abbr: c.abbr, key: c.key })),
+    [dayColumns],
+  );
+
+  const osdByStaffId = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const person of staff) {
+      map.set(
+        person.id,
+        totalOsdOre(person.post, osdDays, grid[person.id] ?? {}),
+      );
+    }
+    return map;
+  }, [staff, osdDays, grid]);
 
   const titleMonth = monthLabel(year, monthIndex);
 
@@ -677,31 +712,38 @@ export function ScheduleGrid() {
 
   return (
     <div className="relative mx-auto w-full max-w-[1500px] px-3 py-6 sm:px-6">
-      <div
-        className={[
-          "rounded-2xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/60 sm:p-6",
-          "transition-[padding] duration-200",
-          panelOpen ? "lg:pr-[22rem]" : "",
-        ].join(" ")}
-      >
-        <header className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div>
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/60 sm:p-6">
+        <header className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
             <p className="text-xs font-medium tracking-wide text-sky-700 uppercase">
-              Programare lunară
+              Programare lunară · {postLabel(post)}
             </p>
-            <h1 className="mt-1 text-base font-semibold tracking-tight text-slate-900 sm:text-lg">
-              <span className="lg:hidden">Grilă ATI · {titleMonth}</span>
-              <span className="hidden lg:inline">
-                S.C.J.U. BRAILA - GRAFIC ASISTENTI ATI II – {titleMonth}
-              </span>
-            </h1>
-            <p className="mt-1 text-xs text-slate-500 lg:hidden">
-              Tap pe casuță · swipe / săgeți pentru săptămână
-            </p>
-            <p className="mt-1 hidden text-xs text-slate-500 lg:block">
-              Click / săgeți pe casuțe · grip pe nume pentru reordonare · date din
-              Neon
-            </p>
+            <div className="mt-1 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => goMonth(-1)}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-lg font-semibold text-slate-700 hover:bg-sky-50 hover:text-sky-800"
+                aria-label="Luna anterioară"
+              >
+                ‹
+              </button>
+              <h1 className="min-w-0 flex-1 text-center text-base font-semibold tracking-tight text-slate-900 sm:text-left sm:text-lg">
+                <span className="lg:hidden">
+                  {postLabel(post)} · {titleMonth}
+                </span>
+                <span className="hidden lg:inline">
+                  {buildGraficTitle(year, month, post)}
+                </span>
+              </h1>
+              <button
+                type="button"
+                onClick={() => goMonth(1)}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-lg font-semibold text-slate-700 hover:bg-sky-50 hover:text-sky-800"
+                aria-label="Luna următoare"
+              >
+                ›
+              </button>
+            </div>
             {loading && (
               <p className="mt-2 text-xs font-medium text-sky-700">Se încarcă…</p>
             )}
@@ -719,7 +761,9 @@ export function ScheduleGrid() {
               disabled={exporting || loading || staff.length === 0}
               className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm font-medium text-slate-700 transition-colors duration-150 hover:border-sky-300 hover:bg-sky-50 hover:text-sky-800 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:py-2"
             >
-              {exporting ? "Se generează…" : "Export PDF test"}
+              {exporting
+                ? "Se generează…"
+                : `Export PDF ${postLabel(post)}`}
             </button>
             <Link
               href="/istoric"
@@ -735,6 +779,38 @@ export function ScheduleGrid() {
             </Link>
           </div>
         </header>
+
+        <div
+          className="mb-4 flex gap-1 rounded-xl border border-slate-200 bg-slate-50 p-1"
+          role="tablist"
+          aria-label="Tip personal"
+        >
+          {(
+            [
+              { id: "asistent" as const, label: "Asistenți" },
+              { id: "infirmier" as const, label: "Infirmiere" },
+            ] as const
+          ).map((tab) => {
+            const selected = post === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                aria-selected={selected}
+                onClick={() => setPostTab(tab.id)}
+                className={[
+                  "flex-1 rounded-lg px-3 py-2 text-sm font-semibold transition-colors duration-150",
+                  selected
+                    ? "bg-white text-sky-800 shadow-sm"
+                    : "text-slate-600 hover:text-slate-900",
+                ].join(" ")}
+              >
+                {tab.label}
+              </button>
+            );
+          })}
+        </div>
 
         {/* Navigator săptămână — doar mobil */}
         <div className="mb-3 flex items-center gap-2 lg:hidden">
@@ -788,7 +864,7 @@ export function ScheduleGrid() {
           >
             <table
               className={[
-                "schedule-grid border-collapse text-[11px]",
+                "schedule-grid border-separate border-spacing-0 text-[11px]",
                 isDesktop ? "w-max min-w-full" : "w-full table-fixed",
               ].join(" ")}
             >
@@ -797,7 +873,7 @@ export function ScheduleGrid() {
                   <th
                     rowSpan={2}
                     className={[
-                      "sticky left-0 z-20 border-0 border-b border-r border-b-slate-200 border-r-slate-400 bg-slate-50 py-2 text-left text-xs font-semibold tracking-wide text-slate-600 uppercase",
+                      "sticky left-0 z-20 border-0 border-b border-r border-b-slate-200 border-r-slate-300 bg-slate-50 py-2 text-left text-xs font-semibold tracking-wide text-slate-600 uppercase",
                       isDesktop
                         ? "min-w-[168px] px-3"
                         : "w-[4.75rem] max-w-[4.75rem] px-1",
@@ -809,7 +885,7 @@ export function ScheduleGrid() {
                     <th
                       key={`${col.key}-n`}
                       className={[
-                        "border-0 border-b border-r border-b-slate-200 border-r-slate-400 px-0.5 py-1.5 text-center font-semibold text-slate-700",
+                        "border-0 border-b border-b-slate-200 px-0.5 py-1.5 text-center font-semibold text-slate-700",
                         isDesktop ? "min-w-[2rem]" : "",
                         col.weekend ? "bg-slate-100" : "bg-slate-50",
                       ].join(" ")}
@@ -820,7 +896,7 @@ export function ScheduleGrid() {
                   {isDesktop && (
                     <th
                       rowSpan={2}
-                      className="min-w-[2.75rem] border-0 border-b border-l border-b-slate-200 border-l-slate-400 bg-slate-50 px-1.5 py-2 text-center text-xs font-semibold text-slate-600"
+                      className="min-w-[2.75rem] border-0 border-b border-l border-b-slate-200 border-l-slate-300 bg-slate-50 px-1.5 py-2 text-center text-xs font-semibold text-slate-600"
                     >
                       O.SD
                     </th>
@@ -831,7 +907,7 @@ export function ScheduleGrid() {
                     <th
                       key={`${col.key}-a`}
                       className={[
-                        "border-0 border-b border-r border-b-slate-200 border-r-slate-400 px-0.5 py-1 text-center font-medium text-slate-500",
+                        "border-0 border-b border-b-slate-200 px-0.5 py-1 text-center font-medium text-slate-500",
                         isDesktop ? "min-w-[2rem]" : "",
                         col.weekend ? "bg-slate-100" : "bg-white",
                       ].join(" ")}
@@ -852,7 +928,9 @@ export function ScheduleGrid() {
                         colSpan={visibleColumns.length + (isDesktop ? 2 : 1)}
                         className="px-4 py-8 text-center text-sm text-slate-500"
                       >
-                        Niciun angajat activ. Adaugă primul rând mai jos.
+                        {post === "infirmier"
+                          ? "Nicio infirmieră pe această grilă. Adaugă primul rând mai jos."
+                          : "Niciun asistent pe această grilă. Adaugă primul rând mai jos."}
                       </td>
                     </tr>
                   ) : (
@@ -866,8 +944,9 @@ export function ScheduleGrid() {
                         activeCol={activeLocalCol(rowIndex)}
                         onActivate={activateFromVisible}
                         onDelete={(p) => void deleteStaff(p)}
-                        onCellFocus={() => gridRef.current?.focus()}
+                        onCellFocus={() => gridRef.current?.focus({ preventScroll: true })}
                         showOsd={isDesktop}
+                        osdHours={osdByStaffId.get(person.id) ?? 0}
                         compactName={!isDesktop}
                       />
                     ))
@@ -913,30 +992,30 @@ export function ScheduleGrid() {
             onClick={() => setAddOpen(true)}
             className="w-full rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3.5 py-2.5 text-sm font-medium text-slate-700 transition-colors duration-150 hover:border-sky-400 hover:bg-sky-50 hover:text-sky-800 sm:w-auto sm:py-2"
           >
-            + Adaugă angajat
+            + Adaugă {post === "infirmier" ? "infirmieră" : "asistent"}
           </button>
         </div>
 
-        <footer className="mt-5 grid grid-cols-1 gap-2 border-t border-slate-100 pt-4 text-[11px] font-medium tracking-wide text-slate-600 uppercase sm:grid-cols-3">
+        <footer className="mt-5 grid grid-cols-1 gap-2 border-t border-slate-100 pt-4 text-[11px] font-medium tracking-wide text-slate-600 uppercase sm:grid-cols-2">
           <p className="text-left">MEDIC SEF: DR. SUSANU CAROLINA</p>
-          <p className="text-left sm:text-center">DELEGAT</p>
           <p className="text-left sm:text-right">AS SEF: POPA NICOLETA</p>
         </footer>
       </div>
 
-      <RightOptionPanel
+      <CellOptionPopup
         open={panelOpen && !!panelContext}
         context={panelContext}
-        onConfirm={(payload) => confirmCell(payload)}
+        onSelect={(payload) => confirmCell(payload)}
         onClose={() => {
           setPanelOpen(false);
           setActive(null);
-          gridRef.current?.focus();
+          gridRef.current?.focus({ preventScroll: true });
         }}
       />
 
       <AddStaffDialog
         open={addOpen}
+        post={post}
         onClose={() => setAddOpen(false)}
         onSubmit={(name) => void addStaff(name)}
       />

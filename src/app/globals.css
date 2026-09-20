@@ -25,15 +25,18 @@ body {
   }
 }
 
-/* Morph Confirmă → Confirmat */
-.confirm-morph-done .confirm-check-path {
-  stroke-dasharray: 1;
-  stroke-dashoffset: 1;
-  animation: confirm-check-draw 0.45s 0.12s ease-out forwards;
+/*
+  Grilă: celulele de zi umplu înălțimea rândului, ca border-b
+  pe Nume / zile / O.SD să fie pe aceeași linie.
+*/
+.schedule-grid td,
+.schedule-grid th {
+  vertical-align: middle;
 }
-
-@keyframes confirm-check-draw {
-  to {
-    stroke-dashoffset: 0;
-  }
+.schedule-grid tbody td {
+  height: 1px; /* trick: forțează stretch pe copilul h-full */
+}
+.schedule-grid tbody td > button {
+  height: 100%;
+  min-height: 2rem;
 }

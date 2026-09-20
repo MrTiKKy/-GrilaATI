@@ -1,32 +1,17 @@
 import { getDb } from "@/lib/db";
+import { buildGraficTitle, type AngajatPost } from "@/lib/post";
 import { toDateString, type GraficSnapshot } from "@/lib/types";
+import { orePentruCasuta } from "@/lib/weekendOre";
 
 const DAY_ABBR = ["D", "L", "Ma", "Mi", "J", "V", "S"] as const;
 
-const MONTH_NAMES_RO = [
-  "IANUARIE",
-  "FEBRUARIE",
-  "MARTIE",
-  "APRILIE",
-  "MAI",
-  "IUNIE",
-  "IULIE",
-  "AUGUST",
-  "SEPTEMBRIE",
-  "OCTOMBRIE",
-  "NOIEMBRIE",
-  "DECEMBRIE",
-] as const;
-
-export function buildMonthTitle(an: number, luna: number): string {
-  const name = MONTH_NAMES_RO[luna - 1] ?? String(luna);
-  return `S.C.J.U. BRAILA - GRAFIC ASISTENTI ATI II – ${name} ${an}`;
-}
+export { buildGraficTitle as buildMonthTitle };
 
 /** Construiește snapshot PDF din DB (sursă de adevăr) — fără date din browser. */
 export async function buildGraficSnapshotFromDb(
   an: number,
   luna: number,
+  post: AngajatPost = "asistent",
 ): Promise<GraficSnapshot> {
   const sql = getDb();
   const start = `${an}-${String(luna).padStart(2, "0")}-01`;
@@ -47,9 +32,10 @@ export async function buildGraficSnapshotFromDb(
   });
 
   const angajatiRows = await sql`
-    SELECT a.id, a.nume
+    SELECT a.id, a.nume, a.post
     FROM angajati a
     WHERE a.activ = true
+      AND COALESCE(a.post, 'asistent') = ${post}
     ORDER BY a.ordine ASC, a.nume ASC
   `;
 
@@ -59,6 +45,7 @@ export async function buildGraficSnapshotFromDb(
     INNER JOIN angajati a ON a.id = p.angajat_id AND a.activ = true
     WHERE p.data >= ${start}::date
       AND p.data < ${end}::date
+      AND COALESCE(a.post, 'asistent') = ${post}
   `;
 
   const byStaffDay = new Map<string, string>();
@@ -72,14 +59,19 @@ export async function buildGraficSnapshotFromDb(
   }
 
   return {
-    title: buildMonthTitle(an, luna),
+    title: buildGraficTitle(an, luna, post),
     days: days.map(({ day, abbr, weekend }) => ({ day, abbr, weekend })),
     rows: angajatiRows.map((row) => {
       const id = String(row.id);
+      const cells = days.map((d) => byStaffDay.get(`${id}|${d.date}`) ?? "");
+      let osd = 0;
+      for (let i = 0; i < days.length; i++) {
+        osd += orePentruCasuta(post, days[i].abbr, cells[i]);
+      }
       return {
         name: String(row.nume).toUpperCase(),
-        cells: days.map((d) => byStaffDay.get(`${id}|${d.date}`) ?? ""),
-        osd: "",
+        cells,
+        osd: osd > 0 ? String(osd) : "",
       };
     }),
   };

@@ -1,10 +1,17 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { SECTIE_VALUES, type SectieValoare } from "@/lib/types";
 
 export const CELL_OPTIONS = [
   { value: "", label: "Gol" },
+  { value: "-", label: "-" },
   { value: "1", label: "1" },
   { value: "2", label: "2" },
   { value: "1/3", label: "1/3" },
@@ -12,6 +19,7 @@ export const CELL_OPTIONS = [
   { value: "L", label: "L" },
   { value: "CO", label: "CO" },
   { value: "CM", label: "CM" },
+  { value: "CIC", label: "CIC" },
 ] as const;
 
 export type PanelContext = {
@@ -27,316 +35,267 @@ export type ConfirmPayload = {
   ciorna: SectieValoare | null;
 };
 
-type RightOptionPanelProps = {
+type CellOptionPopupProps = {
   open: boolean;
   context: PanelContext | null;
-  onConfirm: (payload: ConfirmPayload) => boolean | void | Promise<boolean | void>;
+  /** Salvare imediată la selectare (fără Confirmă) */
+  onSelect: (payload: ConfirmPayload) => boolean | void | Promise<boolean | void>;
   onClose: () => void;
 };
 
-type ConfirmPhase = "idle" | "pending" | "done";
+const GAP = 8;
+const MARGIN = 8;
+const POPUP_W = 260;
 
-function CheckIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      width="18"
-      height="18"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <path
-        className="confirm-check-path"
-        d="M5 13l4 4L19 7"
-        pathLength={1}
-      />
-    </svg>
-  );
+function computePosition(
+  anchor: DOMRect,
+  popupW: number,
+  popupH: number,
+): { top: number; left: number } {
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+
+  // Vertical: preferință sub casuță; la extremă jos → sus (partea opusă)
+  const spaceBelow = vh - anchor.bottom - MARGIN;
+  const spaceAbove = anchor.top - MARGIN;
+  const placeBelow =
+    spaceBelow >= popupH + GAP || spaceBelow >= spaceAbove;
+
+  let top = placeBelow
+    ? anchor.bottom + GAP
+    : anchor.top - GAP - popupH;
+  top = Math.max(MARGIN, Math.min(top, vh - popupH - MARGIN));
+
+  // Orizontal: preferință aliniat la stânga casuței (se deschide spre dreapta).
+  // Extremă dreapta → se deschide spre stânga (partea opusă).
+  // Extremă stânga → rămâne spre dreapta.
+  const fitsLeftAligned = anchor.left + popupW <= vw - MARGIN;
+  const fitsRightAligned = anchor.right - popupW >= MARGIN;
+  let left: number;
+  if (fitsLeftAligned) {
+    left = anchor.left;
+  } else if (fitsRightAligned) {
+    left = anchor.right - popupW;
+  } else {
+    left = Math.max(MARGIN, (vw - popupW) / 2);
+  }
+  left = Math.max(MARGIN, Math.min(left, vw - popupW - MARGIN));
+
+  return { top, left };
 }
 
-function PanelBody({
+export function CellOptionPopup({
+  open,
   context,
-  onConfirm,
+  onSelect,
   onClose,
-}: {
-  context: PanelContext;
-  onConfirm: RightOptionPanelProps["onConfirm"];
-  onClose: () => void;
-}) {
-  const [draft, setDraft] = useState(context.currentValue);
+}: CellOptionPopupProps) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const [draft, setDraft] = useState(context?.currentValue ?? "");
   const [sectie, setSectie] = useState<SectieValoare | null>(
-    context.currentCiorna,
+    context?.currentCiorna ?? null,
   );
-  const [phase, setPhase] = useState<ConfirmPhase>("idle");
-  const resetTimer = useRef<number | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const cellKey = context
+    ? `${context.personName}::${context.columnLabel}`
+    : "none";
 
   useEffect(() => {
+    if (!context) return;
+    setDraft(context.currentValue);
+    setSectie(context.currentCiorna);
+    // Reset doar la schimbarea casuței
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- cellKey
+  }, [cellKey]);
+
+  const reposition = useCallback(() => {
+    if (!open) return;
+    const anchorEl = document.querySelector<HTMLElement>(
+      '[data-cell-active="true"]',
+    );
+    const panel = panelRef.current;
+    if (!anchorEl || !panel) return;
+
+    const anchor = anchorEl.getBoundingClientRect();
+    const popupH = panel.offsetHeight || 320;
+    const popupW = Math.min(POPUP_W, panel.offsetWidth || POPUP_W);
+    setPos(computePosition(anchor, popupW, popupH));
+  }, [open]);
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setPos(null);
+      return;
+    }
+    reposition();
+    const t = window.setTimeout(reposition, 0);
+    return () => window.clearTimeout(t);
+  }, [open, cellKey, reposition]);
+
+  useEffect(() => {
+    if (!open) return;
+    function onScrollOrResize() {
+      reposition();
+    }
+    window.addEventListener("resize", onScrollOrResize);
+    window.addEventListener("scroll", onScrollOrResize, true);
     return () => {
-      if (resetTimer.current) window.clearTimeout(resetTimer.current);
+      window.removeEventListener("resize", onScrollOrResize);
+      window.removeEventListener("scroll", onScrollOrResize, true);
     };
-  }, []);
+  }, [open, reposition]);
 
-  function pickSectie(next: SectieValoare) {
-    if (phase !== "idle") return;
-    setSectie((prev) => (prev === next ? null : next));
-  }
-
-  async function runConfirm(payload: ConfirmPayload) {
-    if (phase !== "idle") return;
-    setPhase("pending");
-    try {
-      const result = await onConfirm(payload);
-      if (result === false) {
-        setPhase("idle");
-        return;
+  useEffect(() => {
+    if (!open) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onClose();
       }
-      setPhase("done");
-      if (resetTimer.current) window.clearTimeout(resetTimer.current);
-      resetTimer.current = window.setTimeout(() => {
-        setPhase("idle");
-      }, 1600);
-    } catch {
-      setPhase("idle");
+    }
+    function onPointerDown(e: PointerEvent) {
+      const panel = panelRef.current;
+      const target = e.target as Node | null;
+      if (!panel || !target) return;
+      if (panel.contains(target)) return;
+      const cell = (target as HTMLElement).closest?.(
+        '[data-cell-active="true"]',
+      );
+      if (cell) return;
+      onClose();
+    }
+    document.addEventListener("keydown", onKey);
+    document.addEventListener("pointerdown", onPointerDown, true);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("pointerdown", onPointerDown, true);
+    };
+  }, [open, onClose]);
+
+  async function commit(next: ConfirmPayload) {
+    if (saving) return;
+    const rollback = { valoare: draft, ciorna: sectie };
+    setDraft(next.valoare);
+    setSectie(next.ciorna);
+    setSaving(true);
+    try {
+      const result = await onSelect(next);
+      if (result === false) {
+        setDraft(rollback.valoare);
+        setSectie(rollback.ciorna);
+      }
+    } finally {
+      setSaving(false);
     }
   }
 
-  function confirm() {
-    void runConfirm({ valoare: draft, ciorna: sectie });
+  function pickValoare(value: string) {
+    void commit({ valoare: value, ciorna: sectie });
   }
 
-  function clearAll() {
-    setDraft("");
-    setSectie(null);
-    void runConfirm({ valoare: "", ciorna: null });
+  function pickSectie(next: SectieValoare) {
+    const ciorna = sectie === next ? null : next;
+    void commit({ valoare: draft, ciorna });
   }
 
-  const preview =
-    draft || sectie
-      ? `${draft || "·"}${sectie ? ` ${sectie}` : ""}`
-      : "Gol";
-
-  const locked = phase !== "idle";
+  if (!open || !context) return null;
 
   return (
-    <>
-      {/* Handle mobil — bottom sheet */}
-      <div className="flex justify-center pt-2 lg:hidden" aria-hidden>
-        <span className="h-1 w-10 rounded-full bg-slate-300" />
-      </div>
-
-      <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-5 py-4">
+    <div
+      ref={panelRef}
+      role="dialog"
+      aria-label="Editare casuță"
+      style={
+        pos
+          ? { top: pos.top, left: pos.left, width: POPUP_W }
+          : { top: -9999, left: -9999, width: POPUP_W, visibility: "hidden" }
+      }
+      className="fixed z-50 rounded-xl border border-slate-200 bg-white p-3 shadow-xl shadow-slate-900/15"
+    >
+      <div className="mb-2 flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="text-xs font-medium tracking-wide text-sky-700 uppercase">
-            Editare casuță
+          <p className="text-[10px] font-medium tracking-wide text-sky-700 uppercase">
+            Editare
           </p>
-          <h2 className="mt-1 truncate text-lg font-semibold text-slate-900">
+          <p className="truncate text-sm font-semibold text-slate-900">
             {context.personName}
-          </h2>
-          <p className="mt-0.5 text-sm text-slate-500">
+          </p>
+          <p className="truncate text-[11px] text-slate-500">
             {context.columnLabel} · {context.detail}
           </p>
         </div>
         <button
           type="button"
           onClick={onClose}
-          className="shrink-0 rounded-lg px-2 py-1 text-sm text-slate-500 transition-colors duration-150 hover:bg-slate-100 hover:text-slate-800"
+          className="shrink-0 rounded-md px-1.5 py-0.5 text-xs text-slate-500 hover:bg-slate-100 hover:text-slate-800"
         >
-          Închide
+          ✕
         </button>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
-        <p className="mb-2 text-xs font-medium text-slate-500 uppercase">
-          Previzualizare casuță
-        </p>
-        <div
-          className={[
-            "mb-5 rounded-xl border px-3 py-2.5 text-center text-base font-semibold",
-            "transition-[background-color,border-color,color,box-shadow] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]",
-            phase === "done"
-              ? "border-emerald-400 bg-emerald-50 text-emerald-800 shadow-sm shadow-emerald-500/10"
-              : "border-slate-200 bg-slate-50 text-slate-800",
-          ].join(" ")}
-        >
-          <span>{draft || "·"}</span>
-          {sectie && (
-            <span className="draft-only ml-1.5 text-amber-700">{sectie}</span>
-          )}
-          <span className="sr-only">{preview}</span>
-        </div>
-
-        <p className="mb-2 text-xs font-medium text-slate-500 uppercase">
-          Schimb (oficial)
-        </p>
-        <div className="mb-5 grid grid-cols-2 gap-2 sm:grid-cols-2">
-          {CELL_OPTIONS.map((opt) => {
-            const selected = draft === opt.value;
-            return (
-              <button
-                key={opt.label}
-                type="button"
-                disabled={locked}
-                onClick={() => setDraft(opt.value)}
-                className={[
-                  "rounded-xl border px-3 py-3 text-sm font-semibold lg:py-2.5",
-                  "transition-[background-color,border-color,box-shadow,color] duration-150",
-                  "disabled:opacity-60",
-                  selected
-                    ? "border-sky-500 bg-sky-50 text-sky-800 ring-2 ring-sky-500/30"
-                    : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50",
-                ].join(" ")}
-              >
-                {opt.label}
-              </button>
-            );
-          })}
-        </div>
-
-        <p className="mb-2 text-xs font-medium text-slate-500 uppercase">
-          Secție (A sau R)
-        </p>
-        <div className="draft-only grid grid-cols-2 gap-2">
-          {SECTIE_VALUES.map((s) => {
-            const selected = sectie === s;
-            return (
-              <button
-                key={s}
-                type="button"
-                disabled={locked}
-                onClick={() => pickSectie(s)}
-                className={[
-                  "rounded-xl border px-3 py-3 text-base font-bold",
-                  "transition-[background-color,border-color,box-shadow,color] duration-150",
-                  "disabled:opacity-60",
-                  selected
-                    ? "border-amber-500 bg-amber-50 text-amber-900 ring-2 ring-amber-400/30"
-                    : "border-slate-200 bg-white text-slate-700 hover:border-amber-300 hover:bg-amber-50/60",
-                ].join(" ")}
-              >
-                {s}
-              </button>
-            );
-          })}
-        </div>
-        <p className="draft-only mt-2 text-[11px] leading-relaxed text-slate-500">
-          Alege o singură secție (A sau R). Apare lângă schimb în casuță; nu
-          apare pe documentul oficial / la print.
-        </p>
-      </div>
-
-      <div className="flex gap-2 border-t border-slate-100 px-5 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] lg:pb-4">
-        <button
-          type="button"
-          disabled={locked}
-          onClick={clearAll}
-          className="rounded-xl border border-slate-200 px-4 py-3 text-sm font-medium text-slate-600 transition-colors duration-150 hover:bg-slate-50 disabled:opacity-50 lg:py-2.5"
-        >
-          Golire
-        </button>
-        <button
-          type="button"
-          disabled={phase === "pending"}
-          onClick={confirm}
-          aria-live="polite"
-          className={[
-            "confirm-morph-btn relative flex-1 overflow-hidden rounded-xl px-4 py-3 text-sm font-semibold lg:py-2.5",
-            "transition-[background-color,box-shadow,transform,border-radius] duration-500",
-            "ease-[cubic-bezier(0.22,1,0.36,1)]",
-            phase === "done"
-              ? "bg-emerald-600 text-white shadow-md shadow-emerald-600/30 scale-[1.02]"
-              : phase === "pending"
-                ? "bg-sky-500 text-white scale-[0.99]"
-                : "bg-sky-600 text-white hover:bg-sky-700",
-          ].join(" ")}
-        >
-          <span className="grid [grid-template-areas:'stack'] place-items-center">
-            <span
-              className={[
-                "[grid-area:stack] inline-flex items-center justify-center gap-2",
-                "transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]",
-                phase === "done"
-                  ? "pointer-events-none translate-y-1 scale-90 opacity-0"
-                  : "translate-y-0 scale-100 opacity-100",
-              ].join(" ")}
-            >
-              {phase === "pending" ? "Se salvează…" : "Confirmă"}
-            </span>
-            <span
-              className={[
-                "[grid-area:stack] inline-flex items-center justify-center gap-2",
-                "transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]",
-                phase === "done"
-                  ? "confirm-morph-done translate-y-0 scale-100 opacity-100"
-                  : "pointer-events-none -translate-y-1 scale-110 opacity-0",
-              ].join(" ")}
-            >
-              <CheckIcon className="shrink-0" />
-              Confirmat
-            </span>
-          </span>
-        </button>
-      </div>
-    </>
-  );
-}
-
-export function RightOptionPanel({
-  open,
-  context,
-  onConfirm,
-  onClose,
-}: RightOptionPanelProps) {
-  const cellKey = context
-    ? `${context.personName}::${context.columnLabel}`
-    : "none";
-
-  return (
-    <>
-      {/* Scrim doar pe mobil */}
-      <button
-        type="button"
-        aria-label="Închide panoul"
-        tabIndex={open ? 0 : -1}
-        onClick={onClose}
-        className={[
-          "fixed inset-0 z-30 bg-slate-900/40 transition-opacity duration-200 lg:hidden",
-          open ? "opacity-100" : "pointer-events-none opacity-0",
-        ].join(" ")}
-      />
-
-      <aside
-        aria-hidden={!open}
-        className={[
-          "fixed z-40 flex flex-col bg-white shadow-xl shadow-slate-900/10",
-          "transition-transform duration-200 ease-out",
-          // Mobil: bottom sheet
-          "inset-x-0 bottom-0 max-h-[85vh] rounded-t-2xl border-t border-slate-200",
-          open ? "translate-y-0" : "pointer-events-none translate-y-full",
-          // Desktop (≥lg): panou dreapta — identic cu înainte
-          "lg:inset-y-0 lg:right-0 lg:left-auto lg:bottom-auto",
-          "lg:max-h-none lg:w-full lg:max-w-sm lg:rounded-none",
-          "lg:border-t-0 lg:border-l lg:border-slate-200",
-          open
-            ? "lg:translate-x-0 lg:translate-y-0"
-            : "lg:translate-x-full lg:translate-y-0",
-        ].join(" ")}
-      >
-        {context ? (
-          <PanelBody
-            key={cellKey}
-            context={context}
-            onConfirm={onConfirm}
-            onClose={onClose}
-          />
-        ) : (
-          <div className="p-5 text-sm text-slate-500">Selectează o casuță</div>
+      <div className="mb-2 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-center text-sm font-semibold text-slate-800">
+        <span>{draft || "·"}</span>
+        {sectie && (
+          <span className="draft-only ml-1 text-amber-700">{sectie}</span>
         )}
-      </aside>
-    </>
+      </div>
+
+      <p className="mb-1 text-[10px] font-medium tracking-wide text-slate-500 uppercase">
+        Schimb
+      </p>
+      <div className="mb-2 grid grid-cols-4 gap-1">
+        {CELL_OPTIONS.map((opt) => {
+          const selected = draft === opt.value;
+          return (
+            <button
+              key={opt.label}
+              type="button"
+              disabled={saving}
+              onClick={() => pickValoare(opt.value)}
+              className={[
+                "rounded-lg border px-1 py-1.5 text-xs font-semibold",
+                "transition-colors duration-100 disabled:opacity-50",
+                selected
+                  ? "border-sky-500 bg-sky-50 text-sky-800"
+                  : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50",
+              ].join(" ")}
+            >
+              {opt.label}
+            </button>
+          );
+        })}
+      </div>
+
+      <p className="draft-only mb-1 text-[10px] font-medium tracking-wide text-slate-500 uppercase">
+        Secție
+      </p>
+      <div className="draft-only grid grid-cols-2 gap-1">
+        {SECTIE_VALUES.map((s) => {
+          const selected = sectie === s;
+          return (
+            <button
+              key={s}
+              type="button"
+              disabled={saving}
+              onClick={() => pickSectie(s)}
+              className={[
+                "rounded-lg border px-1 py-1.5 text-sm font-bold",
+                "transition-colors duration-100 disabled:opacity-50",
+                selected
+                  ? "border-amber-500 bg-amber-50 text-amber-900"
+                  : "border-slate-200 bg-white text-slate-700 hover:bg-amber-50/50",
+              ].join(" ")}
+            >
+              {s}
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }
+
+/** @deprecated — folosește CellOptionPopup */
+export const RightOptionPanel = CellOptionPopup;
