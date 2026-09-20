@@ -38,10 +38,15 @@ export function CellFocus({
       className={[
         "flex h-full min-h-8 w-full min-w-[2.25rem] items-center justify-center gap-0.5 px-0.5",
         "text-[11px] font-medium text-slate-800",
-        "transition-[background-color] duration-150 ease-out",
+        "transition-[background-color,box-shadow] duration-150 ease-out",
         "outline-none focus-visible:outline-none rounded-none",
-        weekend ? "bg-slate-100" : "bg-white",
-        active ? "relative z-[1] bg-sky-50" : "hover:bg-sky-50/70",
+        active
+          ? "relative z-[1] bg-sky-50"
+          : [
+              weekend ? "bg-slate-100" : "bg-white",
+              "hover:z-[1] hover:bg-sky-100",
+              "hover:shadow-[inset_0_0_0_1.5px_rgb(56_189_248)]",
+            ].join(" "),
       ].join(" ")}
     >
       <span
