@@ -189,7 +189,7 @@ export function SortableStaffRow({
           <td
             key={`${staff.id}-${col.key}`}
             className={[
-              "border-0 border-b border-b-slate-200 p-0 align-middle",
+              "border-0 border-r border-b border-b-slate-200 border-r-slate-300 p-0 align-middle",
               weekend ? "bg-slate-100" : "bg-white",
             ].join(" ")}
           >

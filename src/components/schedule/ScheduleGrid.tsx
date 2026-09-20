@@ -885,7 +885,7 @@ export function ScheduleGrid() {
                     <th
                       key={`${col.key}-n`}
                       className={[
-                        "border-0 border-b border-b-slate-200 px-0.5 py-1.5 text-center font-semibold text-slate-700",
+                        "border-0 border-r border-b border-b-slate-200 border-r-slate-300 px-0.5 py-1.5 text-center font-semibold text-slate-700",
                         isDesktop ? "min-w-[2rem]" : "",
                         col.weekend ? "bg-slate-100" : "bg-slate-50",
                       ].join(" ")}
@@ -907,7 +907,7 @@ export function ScheduleGrid() {
                     <th
                       key={`${col.key}-a`}
                       className={[
-                        "border-0 border-b border-b-slate-200 px-0.5 py-1 text-center font-medium text-slate-500",
+                        "border-0 border-r border-b border-b-slate-200 border-r-slate-300 px-0.5 py-1 text-center font-medium text-slate-500",
                         isDesktop ? "min-w-[2rem]" : "",
                         col.weekend ? "bg-slate-100" : "bg-white",
                       ].join(" ")}
