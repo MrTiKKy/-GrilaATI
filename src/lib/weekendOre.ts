@@ -5,24 +5,22 @@ export type WeekendOsdDay = "V" | "S" | "D";
 
 /**
  * Ore pe schimb:
- * - Vineri asistent: doar `1/3` (10h)
- * - Vineri infirmier: `1/3` (9h) + `2` (6h)
+ * - Vineri: doar `1/3`; `1`/`2` = 0
  * - Sâmbătă / Duminică: `1`, `1/3`, `2`
- * - Infirmier `2` = 6h pe V/S/D
  */
 const ORE_OSD: Record<
   AngajatPost,
   Record<WeekendOsdDay, Record<string, number>>
 > = {
   asistent: {
-    V: { "1/3": 10 },
+    V: { "1/3": 7 },
     S: { "1": 8, "1/3": 18, "2": 6 },
     D: { "1": 8, "1/3": 11, "2": 6 },
   },
   infirmier: {
-    V: { "1/3": 9, "2": 6 },
-    S: { "1": 8, "1/3": 17, "2": 6 },
-    D: { "1": 8, "1/3": 11, "2": 6 },
+    V: { "1/3": 6 },
+    S: { "1": 8, "1/3": 17, "2": 7 },
+    D: { "1": 8, "1/3": 11, "2": 7 },
   },
 };
 
