@@ -17,7 +17,7 @@ export function AppNav() {
 
   return (
     <div className="border-b border-slate-200 bg-white/90">
-      <div className="mx-auto flex w-full max-w-[1500px] items-center gap-2 px-3 py-2 sm:gap-3 sm:px-6">
+      <div className="mx-auto flex w-full max-w-[1800px] items-center gap-2 px-2 py-2 sm:gap-3 sm:px-3 lg:px-4">
         <nav className="flex min-w-0 items-center gap-1 text-sm sm:gap-2">
           {links.map((link) => {
             const active =

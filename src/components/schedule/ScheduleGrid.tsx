@@ -450,10 +450,6 @@ export function ScheduleGrid() {
 
       if (willBeCo && person.zileCoAn === 0) {
         flashStatus("CO salvat — atenție: nu sunt setate zile alocate");
-      } else if (payload.ciorna) {
-        flashStatus(`Salvat (${payload.valoare || "gol"} + ${payload.ciorna})`);
-      } else {
-        flashStatus("Programare salvată");
       }
       return true;
     } catch (e) {
@@ -711,8 +707,8 @@ export function ScheduleGrid() {
   }
 
   return (
-    <div className="relative mx-auto w-full max-w-[1500px] px-3 py-6 sm:px-6">
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/60 sm:p-6">
+    <div className="relative mx-auto w-full max-w-[1800px] px-2 py-6 sm:px-3 lg:px-4">
+      <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm shadow-slate-200/60 sm:p-4 lg:p-5">
         <header className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
             <p className="text-xs font-medium tracking-wide text-sky-700 uppercase">
@@ -865,7 +861,7 @@ export function ScheduleGrid() {
             <table
               className={[
                 "schedule-grid border-separate border-spacing-0 text-[11px]",
-                isDesktop ? "w-max min-w-full" : "w-full table-fixed",
+                isDesktop ? "w-full" : "w-full table-fixed",
               ].join(" ")}
             >
               <thead>
@@ -875,7 +871,7 @@ export function ScheduleGrid() {
                     className={[
                       "sticky left-0 z-20 border-0 border-b border-r border-b-slate-200 border-r-slate-300 bg-slate-50 py-2 text-left text-xs font-semibold tracking-wide text-slate-600 uppercase",
                       isDesktop
-                        ? "min-w-[168px] px-3"
+                        ? "min-w-[148px] px-2"
                         : "w-[4.75rem] max-w-[4.75rem] px-1",
                     ].join(" ")}
                   >
@@ -885,8 +881,8 @@ export function ScheduleGrid() {
                     <th
                       key={`${col.key}-n`}
                       className={[
-                        "border-0 border-r border-b border-b-slate-200 border-r-slate-300 px-0.5 py-1.5 text-center font-semibold text-slate-700",
-                        isDesktop ? "min-w-[2rem]" : "",
+                        "border-0 border-r border-b border-b-slate-200 border-r-slate-300 px-0 py-1.5 text-center font-semibold text-slate-700",
+                        isDesktop ? "min-w-[1.85rem]" : "",
                         col.weekend ? "bg-slate-100" : "bg-slate-50",
                       ].join(" ")}
                     >
@@ -907,8 +903,8 @@ export function ScheduleGrid() {
                     <th
                       key={`${col.key}-a`}
                       className={[
-                        "border-0 border-r border-b border-b-slate-200 border-r-slate-300 px-0.5 py-1 text-center font-medium text-slate-500",
-                        isDesktop ? "min-w-[2rem]" : "",
+                        "border-0 border-r border-b border-b-slate-200 border-r-slate-300 px-0 py-1 text-center font-medium text-slate-500",
+                        isDesktop ? "min-w-[1.85rem]" : "",
                         col.weekend ? "bg-slate-100" : "bg-white",
                       ].join(" ")}
                     >

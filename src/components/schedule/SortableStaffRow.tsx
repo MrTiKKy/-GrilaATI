@@ -126,7 +126,7 @@ export function SortableStaffRow({
           "sticky left-0 z-10 border-0 border-b border-r border-b-slate-200 border-r-slate-300 bg-white py-0 text-left align-middle group-hover:bg-slate-50",
           compactName
             ? "w-[4.75rem] max-w-[4.75rem] px-1"
-            : "min-w-[168px] px-3",
+            : "min-w-[148px] px-2",
         ].join(" ")}
       >
         <div className="flex min-w-0 items-center gap-0.5">
@@ -209,12 +209,12 @@ export function SortableStaffRow({
       {showOsd && (
         <td
           className={[
-            "min-w-[2.75rem] border-0 border-b border-l border-b-slate-200 border-l-slate-300 bg-slate-50/80 px-1.5 text-center align-middle text-[11px] tabular-nums",
+            "min-w-[2.75rem] border-0 border-b border-l border-b-slate-200 border-l-slate-300 bg-slate-50 px-1.5 text-center align-middle text-[11px] tabular-nums",
             osdHours > 0
               ? "font-semibold text-slate-800"
               : "font-medium text-slate-400",
           ].join(" ")}
-          title="Ore Sâmbătă + Duminică (O.SD)"
+          title="Ore Vineri (1/3) + Sâmbătă + Duminică (O.SD)"
         >
           {osdHours > 0 ? osdHours : "—"}
         </td>
