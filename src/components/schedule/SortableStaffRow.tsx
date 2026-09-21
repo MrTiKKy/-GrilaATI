@@ -214,7 +214,7 @@ export function SortableStaffRow({
               ? "font-semibold text-slate-800"
               : "font-medium text-slate-400",
           ].join(" ")}
-          title="Ore Vineri (1/3) + Sâmbătă + Duminică (O.SD)"
+          title="Ore V/S/D (O.SD)"
         >
           {osdHours > 0 ? osdHours : "—"}
         </td>
