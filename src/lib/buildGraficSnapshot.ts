@@ -1,4 +1,5 @@
 import { getDb } from "@/lib/db";
+import { loadOreOsdRates } from "@/lib/loadOreOsd";
 import { buildGraficTitle, type AngajatPost } from "@/lib/post";
 import { toDateString, type GraficSnapshot } from "@/lib/types";
 import { orePentruCasuta } from "@/lib/weekendOre";
@@ -18,6 +19,7 @@ export async function buildGraficSnapshotFromDb(
   const endDate = new Date(Date.UTC(an, luna, 1));
   const end = endDate.toISOString().slice(0, 10);
   const daysInMonth = new Date(an, luna, 0).getDate();
+  const osdRates = await loadOreOsdRates();
 
   const days = Array.from({ length: daysInMonth }, (_, i) => {
     const day = i + 1;
@@ -66,7 +68,7 @@ export async function buildGraficSnapshotFromDb(
       const cells = days.map((d) => byStaffDay.get(`${id}|${d.date}`) ?? "");
       let osd = 0;
       for (let i = 0; i < days.length; i++) {
-        osd += orePentruCasuta(post, days[i].abbr, cells[i]);
+        osd += orePentruCasuta(post, days[i].abbr, cells[i], osdRates);
       }
       return {
         name: String(row.nume).toUpperCase(),

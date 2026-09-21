@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { OreOsdPanel } from "@/components/schedule/OreOsdPanel";
 import { postLabel, type AngajatPost } from "@/lib/post";
 import type { ConcediiResponse, ConcediuDto } from "@/lib/types";
 
@@ -282,7 +283,7 @@ export default function ConcediiPage() {
 
   return (
     <main className="min-h-full flex-1 bg-slate-100 py-6 sm:py-8">
-      <div className="mx-auto w-full max-w-3xl px-4 sm:px-6">
+      <div className="mx-auto w-full max-w-5xl space-y-5 px-4 sm:px-6">
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/60 sm:p-6">
           <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
@@ -421,6 +422,8 @@ export default function ConcediiPage() {
             </div>
           )}
         </div>
+
+        <OreOsdPanel />
       </div>
     </main>
   );

@@ -51,6 +51,13 @@ import {
 import { downloadGraficPdf } from "@/components/pdf/exportGraficPdf";
 import type { GraficPdfData } from "@/components/pdf/GraficAtiPdf";
 import { totalOsdOre } from "@/lib/weekendOre";
+import {
+  cellsToRates,
+  mergeWithDefaults,
+  ORE_OSD_DEFAULTS,
+  type OreOsdCell,
+  type OreOsdRates,
+} from "@/lib/oreOsd";
 
 const DAY_ABBR = ["D", "L", "Ma", "Mi", "J", "V", "S"] as const;
 
@@ -649,6 +656,29 @@ export function ScheduleGrid() {
     ? staff.find((s) => s.id === draggingId)
     : null;
 
+  const [osdRates, setOsdRates] = useState<OreOsdRates>(() =>
+    cellsToRates(ORE_OSD_DEFAULTS),
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadRates() {
+      try {
+        const res = await fetch("/api/ore-osd");
+        if (!res.ok) return;
+        const data = (await res.json()) as { items: OreOsdCell[] };
+        if (cancelled) return;
+        setOsdRates(cellsToRates(mergeWithDefaults(data.items ?? [])));
+      } catch {
+        /* păstrează defaults */
+      }
+    }
+    void loadRates();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const osdDays = useMemo(
     () => dayColumns.map((c) => ({ abbr: c.abbr, key: c.key })),
     [dayColumns],
@@ -659,11 +689,11 @@ export function ScheduleGrid() {
     for (const person of staff) {
       map.set(
         person.id,
-        totalOsdOre(person.post, osdDays, grid[person.id] ?? {}),
+        totalOsdOre(person.post, osdDays, grid[person.id] ?? {}, osdRates),
       );
     }
     return map;
-  }, [staff, osdDays, grid]);
+  }, [staff, osdDays, grid, osdRates]);
 
   const titleMonth = monthLabel(year, monthIndex);
 

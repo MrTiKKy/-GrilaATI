@@ -15,7 +15,8 @@ export type AuditAction =
   | "grafic_delete"
   | "user_create"
   | "user_email_change"
-  | "user_password_change";
+  | "user_password_change"
+  | "ore_osd_update";
 
 export async function writeAudit(params: {
   action: AuditAction;
