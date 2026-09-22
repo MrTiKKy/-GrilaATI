@@ -11,7 +11,6 @@ import {
   mergeGraficFooter,
   type GraficFooterTexts,
 } from "@/lib/graficFooter";
-import { GRAFIC_FONT } from "@/lib/graficTypography";
 
 export type GraficPdfDay = {
   day: number;
@@ -47,6 +46,8 @@ let fontsRegistered = false;
 
 /** Înregistrează DejaVu Serif (suportă ăâîșț) — apelează o dată înainte de pdf(). */
 export function registerGraficPdfFonts(origin: string) {
+  // Fără despărțire în silabe (evită „CONSTAN-…”)
+  Font.registerHyphenationCallback((word) => [word]);
   if (fontsRegistered) return;
   const base = `${origin.replace(/\/$/, "")}/fonts`;
   Font.register({
@@ -66,18 +67,16 @@ const styles = StyleSheet.create({
     paddingBottom: PAGE_PAD_BOTTOM,
     paddingHorizontal: 14,
     fontFamily: FONT_FAMILY,
-    fontSize: 7,
+    fontSize: 8,
     color: "#000",
-    height: "100%",
   },
   title: {
     fontFamily: FONT_FAMILY,
     fontWeight: "bold",
-    fontSize: GRAFIC_FONT.title,
+    fontSize: 11,
     textAlign: "center",
     textTransform: "uppercase",
     marginBottom: 6,
-    height: TITLE_BLOCK - 6,
   },
   pageHint: {
     fontFamily: FONT_FAMILY,
@@ -96,17 +95,16 @@ const styles = StyleSheet.create({
     flexDirection: "row",
   },
   nameCell: {
-    width: "11%",
+    width: "13%",
     borderRightWidth: 0.6,
     borderBottomWidth: 0.6,
     borderColor: "#000",
-    paddingHorizontal: 3,
+    paddingHorizontal: 2,
     justifyContent: "center",
   },
   nameText: {
     fontFamily: FONT_FAMILY,
     fontWeight: "bold",
-    fontSize: GRAFIC_FONT.name,
     textTransform: "uppercase",
   },
   dayCell: {
@@ -122,7 +120,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#d9d9d9",
   },
   osdCell: {
-    width: "4.5%",
+    width: "4%",
     borderRightWidth: 0.6,
     borderBottomWidth: 0.6,
     borderColor: "#000",
@@ -132,18 +130,15 @@ const styles = StyleSheet.create({
   headerText: {
     fontFamily: FONT_FAMILY,
     fontWeight: "bold",
-    fontSize: GRAFIC_FONT.header,
     textAlign: "center",
   },
   abbrText: {
     fontFamily: FONT_FAMILY,
     fontWeight: "bold",
-    fontSize: GRAFIC_FONT.abbr,
     textAlign: "center",
   },
   cellText: {
     fontFamily: FONT_FAMILY,
-    fontSize: GRAFIC_FONT.cell,
     textAlign: "center",
   },
   delegatMerged: {
@@ -157,7 +152,6 @@ const styles = StyleSheet.create({
   },
   footer: {
     marginTop: TABLE_GAP,
-    height: FOOTER_BLOCK - TABLE_GAP,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-end",
@@ -165,10 +159,19 @@ const styles = StyleSheet.create({
   footerText: {
     fontFamily: FONT_FAMILY,
     fontStyle: "italic",
-    fontSize: GRAFIC_FONT.footer,
+    fontSize: 9,
     textTransform: "uppercase",
   },
 });
+
+/** Fonturi PDF proporționale cu înălțimea rândului (evită pagină goală). */
+function fontsForRow(rowH: number) {
+  const cell = Math.min(10, Math.max(6.5, rowH * 0.52));
+  const name = Math.min(7.5, Math.max(5.5, rowH * 0.42));
+  const header = Math.min(8, Math.max(6, rowH * 0.45));
+  const abbr = Math.min(7, Math.max(5.5, rowH * 0.4));
+  return { cell, name, header, abbr };
+}
 
 function chunkRows<T>(rows: T[], size: number): T[][] {
   if (rows.length === 0) return [[]];
@@ -186,40 +189,41 @@ function TableHeader({
   days: GraficPdfDay[];
   rowH: number;
 }) {
+  const f = fontsForRow(rowH);
   return (
     <>
       <View style={[styles.row, { height: rowH }]}>
         <View style={styles.nameCell}>
-          <Text style={styles.headerText}> </Text>
+          <Text style={[styles.headerText, { fontSize: f.header }]}> </Text>
         </View>
         {days.map((d) => (
           <View
             key={`n-${d.day}`}
             style={[styles.dayCell, d.weekend ? styles.weekend : undefined]}
           >
-            <Text style={styles.headerText}>{d.day}</Text>
+            <Text style={[styles.headerText, { fontSize: f.header }]}>
+              {d.day}
+            </Text>
           </View>
         ))}
         <View style={styles.osdCell}>
-          <Text style={[styles.headerText, { fontSize: GRAFIC_FONT.osd }]}>
-            O.SD
-          </Text>
+          <Text style={[styles.headerText, { fontSize: f.abbr }]}>O.SD</Text>
         </View>
       </View>
       <View style={[styles.row, { height: rowH }]}>
         <View style={styles.nameCell}>
-          <Text style={styles.headerText}> </Text>
+          <Text style={[styles.headerText, { fontSize: f.header }]}> </Text>
         </View>
         {days.map((d) => (
           <View
             key={`a-${d.day}`}
             style={[styles.dayCell, d.weekend ? styles.weekend : undefined]}
           >
-            <Text style={styles.abbrText}>{d.abbr}</Text>
+            <Text style={[styles.abbrText, { fontSize: f.abbr }]}>{d.abbr}</Text>
           </View>
         ))}
         <View style={styles.osdCell}>
-          <Text style={styles.abbrText}> </Text>
+          <Text style={[styles.abbrText, { fontSize: f.abbr }]}> </Text>
         </View>
       </View>
     </>
@@ -238,6 +242,7 @@ function StaffTableRows({
   rowH: number;
 }) {
   const dayCount = days.length;
+  const f = fontsForRow(rowH);
   return (
     <>
       {rows.map((row, idx) => (
@@ -247,7 +252,9 @@ function StaffTableRows({
           wrap={false}
         >
           <View style={styles.nameCell}>
-            <Text style={styles.nameText}>{row.name}</Text>
+            <Text style={[styles.nameText, { fontSize: f.name }]}>
+              {row.name}
+            </Text>
           </View>
           {Array.from({ length: dayCount }, (_, i) => {
             const d = days[i];
@@ -257,12 +264,16 @@ function StaffTableRows({
                 key={`${rowOffset + idx}-${d.day}`}
                 style={[styles.dayCell, d.weekend ? styles.weekend : undefined]}
               >
-                <Text style={styles.cellText}>{value}</Text>
+                <Text style={[styles.cellText, { fontSize: f.cell }]}>
+                  {value}
+                </Text>
               </View>
             );
           })}
           <View style={styles.osdCell}>
-            <Text style={styles.cellText}>{row.osd || ""}</Text>
+            <Text style={[styles.cellText, { fontSize: f.cell }]}>
+              {row.osd || ""}
+            </Text>
           </View>
         </View>
       ))}
@@ -289,15 +300,15 @@ function EmptyRows({
           wrap={false}
         >
           <View style={styles.nameCell}>
-            <Text style={styles.cellText}> </Text>
+            <Text> </Text>
           </View>
           {Array.from({ length: dayCount }, (_, i) => (
             <View key={`e-${idx}-${days[i].day}`} style={styles.dayCell}>
-              <Text style={styles.cellText}> </Text>
+              <Text> </Text>
             </View>
           ))}
           <View style={styles.osdCell}>
-            <Text style={styles.cellText}> </Text>
+            <Text> </Text>
           </View>
         </View>
       ))}
@@ -312,13 +323,18 @@ function DelegatRow({
   footer: GraficFooterTexts;
   rowH: number;
 }) {
+  const f = fontsForRow(rowH);
   return (
     <View style={[styles.row, { height: rowH }]} wrap={false}>
       <View style={styles.nameCell}>
-        <Text style={styles.nameText}>{footer.delegatName}</Text>
+        <Text style={[styles.nameText, { fontSize: f.name }]}>
+          {footer.delegatName}
+        </Text>
       </View>
       <View style={styles.delegatMerged}>
-        <Text style={styles.cellText}>{footer.delegatLabel}</Text>
+        <Text style={[styles.cellText, { fontSize: f.cell }]}>
+          {footer.delegatLabel}
+        </Text>
       </View>
     </View>
   );
