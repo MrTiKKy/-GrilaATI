@@ -7,6 +7,7 @@ import {
   isProgramareCuloare,
 } from "@/lib/culoare";
 import { getDb } from "@/lib/db";
+import { parseFoaie } from "@/lib/foi";
 import { clientKey } from "@/lib/rateLimit";
 import { readJsonLimited } from "@/lib/readJsonLimited";
 import { parseUuid } from "@/lib/validate";
@@ -37,6 +38,8 @@ export async function PUT(request: Request) {
         { status: 400 },
       );
     }
+
+    const foaie = parseFoaie(body.foaie ?? 1) ?? 1;
 
     const sql = getDb();
 
@@ -80,20 +83,28 @@ export async function PUT(request: Request) {
         DELETE FROM programari
         WHERE angajat_id = ${angajatId}::uuid
           AND data = ${body.data}::date
+          AND foaie = ${foaie}
       `;
       await writeAudit({
         action: "programare_delete",
         resource: angajatId,
-        detail: { data: body.data },
+        detail: { data: body.data, foaie },
         ip: clientKey(request),
       });
       return NextResponse.json({ ok: true, deleted: true });
     }
 
     await sql`
-      INSERT INTO programari (angajat_id, data, valoare, ciorna, culoare)
-      VALUES (${angajatId}::uuid, ${body.data}::date, ${valoareRaw}, ${ciorna}, ${culoare})
-      ON CONFLICT (angajat_id, data)
+      INSERT INTO programari (angajat_id, data, valoare, ciorna, culoare, foaie)
+      VALUES (
+        ${angajatId}::uuid,
+        ${body.data}::date,
+        ${valoareRaw},
+        ${ciorna},
+        ${culoare},
+        ${foaie}
+      )
+      ON CONFLICT (angajat_id, data, foaie)
       DO UPDATE SET
         valoare = EXCLUDED.valoare,
         ciorna = EXCLUDED.ciorna,
@@ -103,7 +114,7 @@ export async function PUT(request: Request) {
     await writeAudit({
       action: "programare_upsert",
       resource: angajatId,
-      detail: { data: body.data, valoare: valoareRaw, ciorna, culoare },
+      detail: { data: body.data, valoare: valoareRaw, ciorna, culoare, foaie },
       ip: clientKey(request),
     });
 
@@ -113,15 +124,18 @@ export async function PUT(request: Request) {
       valoare: valoareRaw,
       ciorna,
       culoare: culoareFromDb(culoare),
+      foaie,
     });
   } catch (error) {
     console.error("PUT /api/programari", error);
     const message =
-      error instanceof Error && /culoare/i.test(error.message)
-        ? "Coloana culoare lipsește — rulează sql/add_culoare.sql în Neon"
-        : error instanceof Error && /ciorna/i.test(error.message)
-          ? "Coloana ciorna lipsește — rulează sql/add_ciorna.sql în Neon"
-          : "Nu s-a putut salva programarea";
+      error instanceof Error && /foaie/i.test(error.message)
+        ? "Coloana foaie lipsește — rulează sql/add_foi.sql în Neon"
+        : error instanceof Error && /culoare/i.test(error.message)
+          ? "Coloana culoare lipsește — rulează sql/add_culoare.sql în Neon"
+          : error instanceof Error && /ciorna/i.test(error.message)
+            ? "Coloana ciorna lipsește — rulează sql/add_ciorna.sql în Neon"
+            : "Nu s-a putut salva programarea";
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

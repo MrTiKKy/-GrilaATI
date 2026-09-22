@@ -105,8 +105,15 @@ export async function POST(request: Request) {
       ? parsed.data.post
       : "asistent";
 
-    const snapshot = await buildGraficSnapshotFromDb(an, luna, post);
-    const titlu = buildMonthTitle(an, luna, post);
+    const foaieRaw = Number(parsed.data.foaie ?? 1);
+    const foaie =
+      Number.isInteger(foaieRaw) && foaieRaw >= 1 && foaieRaw <= 50
+        ? foaieRaw
+        : 1;
+
+    const snapshot = await buildGraficSnapshotFromDb(an, luna, post, foaie);
+    const titluBase = buildMonthTitle(an, luna, post);
+    const titlu = foaie > 1 ? `${titluBase} · Sheet ${foaie}` : titluBase;
 
     const sql = getDb();
     const inserted = await sql`
@@ -123,7 +130,7 @@ export async function POST(request: Request) {
     await writeAudit({
       action: "grafic_save",
       resource: String(row.id),
-      detail: { an, luna, post, rows: snapshot.rows.length },
+      detail: { an, luna, post, foaie, rows: snapshot.rows.length },
       ip: clientKey(request),
     });
 

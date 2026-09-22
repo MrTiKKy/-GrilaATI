@@ -26,7 +26,7 @@ export async function GET(request: Request) {
         COALESCE(a.post, 'asistent') AS post,
         a.zile_co_an,
         COALESCE((
-          SELECT COUNT(*)::int
+          SELECT COUNT(DISTINCT p.data)::int
           FROM programari p
           WHERE p.angajat_id = a.id
             AND p.valoare = 'CO'

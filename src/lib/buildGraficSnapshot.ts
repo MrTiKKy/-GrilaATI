@@ -14,6 +14,7 @@ export async function buildGraficSnapshotFromDb(
   an: number,
   luna: number,
   post: AngajatPost = "asistent",
+  foaie = 1,
 ): Promise<GraficSnapshot> {
   const sql = getDb();
   const start = `${an}-${String(luna).padStart(2, "0")}-01`;
@@ -52,6 +53,7 @@ export async function buildGraficSnapshotFromDb(
     WHERE p.data >= ${start}::date
       AND p.data < ${end}::date
       AND COALESCE(a.post, 'asistent') = ${post}
+      AND p.foaie = ${foaie}
   `;
 
   const byStaffDay = new Map<string, string>();

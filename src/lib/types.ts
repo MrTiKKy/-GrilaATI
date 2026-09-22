@@ -39,6 +39,8 @@ export type ProgramareDto = {
   ciorna: SectieValoare | null;
   /** Culori text: black (default) | red | blue | green | yellow */
   culoare?: string | null;
+  /** Sheet / foaie (1 = Sheet 1) */
+  foaie?: number;
 };
 
 export type LunaResponse = {
@@ -46,6 +48,10 @@ export type LunaResponse = {
   luna: number;
   angajati: AngajatDto[];
   programari: ProgramareDto[];
+  /** Foi existente pentru post-ul cerut */
+  foi?: number[];
+  /** Foaia curentă */
+  foaie?: number;
 };
 
 export type ConcediuDto = {
@@ -93,6 +99,8 @@ export type UpsertProgramareBody = {
   ciorna?: string | null;
   /** 'black' | 'red' | 'blue' | 'green' | 'yellow' | null */
   culoare?: string | null;
+  /** Sheet / foaie, default 1 */
+  foaie?: number;
 };
 
 /** Snapshot salvat pentru PDF (arhiva grafice_finale) */
@@ -126,6 +134,8 @@ export type CreateGraficBody = {
   luna: number;
   /** asistent | infirmier — PDF separat pe tip */
   post?: AngajatPost;
+  /** Sheet / foaie exportată */
+  foaie?: number;
 };
 
 export type GraficeListResponse = {

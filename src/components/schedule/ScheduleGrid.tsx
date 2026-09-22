@@ -38,7 +38,7 @@ import {
   tabParamFromPost,
   type AngajatPost,
 } from "@/lib/post";
-import { parseMonth, parseYear } from "@/lib/validate";
+import { parseMonth, parseYear, parseFoaieParam } from "@/lib/validate";
 import { AddStaffDialog } from "./AddStaffDialog";
 import { CellFocus } from "./CellFocus";
 import {
@@ -192,11 +192,13 @@ function buildMonthQuery(
   year: number,
   month: number,
   post: AngajatPost,
+  foaie = 1,
 ): string {
   const params = new URLSearchParams();
   params.set("an", String(year));
   params.set("luna", String(month));
   params.set("tab", tabParamFromPost(post));
+  if (foaie > 1) params.set("foaie", String(foaie));
   return params.toString();
 }
 
@@ -221,6 +223,8 @@ export function ScheduleGrid() {
   const month = monthFromUrl ?? now.getMonth() + 1;
   const monthIndex = month - 1;
   const post = postFromTabParam(searchParams.get("tab"));
+  const foaieFromUrl = parseFoaieParam(searchParams.get("foaie"));
+  const foaie = foaieFromUrl ?? 1;
 
   // Completează URL-ul când lipsește an/luna/tab (intrare pe / → luna curentă)
   useEffect(() => {
@@ -228,15 +232,15 @@ export function ScheduleGrid() {
     const hasLuna = searchParams.get("luna") != null;
     const hasTab = searchParams.get("tab") != null;
     if (hasAn && hasLuna && hasTab) return;
-    router.replace(`${pathname}?${buildMonthQuery(year, month, post)}`, {
+    router.replace(`${pathname}?${buildMonthQuery(year, month, post, foaie)}`, {
       scroll: false,
     });
-  }, [searchParams, pathname, router, year, month, post]);
+  }, [searchParams, pathname, router, year, month, post, foaie]);
 
   function goMonth(delta: number) {
     const d = new Date(year, monthIndex + delta, 1);
     router.push(
-      `${pathname}?${buildMonthQuery(d.getFullYear(), d.getMonth() + 1, post)}`,
+      `${pathname}?${buildMonthQuery(d.getFullYear(), d.getMonth() + 1, post, 1)}`,
     );
   }
 
@@ -244,7 +248,16 @@ export function ScheduleGrid() {
     if (next === post) return;
     setActive(null);
     setPanelOpen(false);
-    router.push(`${pathname}?${buildMonthQuery(year, month, next)}`, {
+    router.push(`${pathname}?${buildMonthQuery(year, month, next, 1)}`, {
+      scroll: false,
+    });
+  }
+
+  function setFoaieTab(next: number) {
+    if (next === foaie) return;
+    setActive(null);
+    setPanelOpen(false);
+    router.push(`${pathname}?${buildMonthQuery(year, month, post, next)}`, {
       scroll: false,
     });
   }
@@ -274,6 +287,9 @@ export function ScheduleGrid() {
   const [footerTexts, setFooterTexts] = useState<GraficFooterTexts>(
     GRAFIC_FOOTER_DEFAULTS,
   );
+  const [foi, setFoi] = useState<number[]>([1]);
+  const [creatingFoaie, setCreatingFoaie] = useState(false);
+  const [deletingFoaie, setDeletingFoaie] = useState(false);
   const gridRef = useRef<HTMLDivElement>(null);
   const statusTimer = useRef<number | null>(null);
   const touchStartX = useRef<number | null>(null);
@@ -358,13 +374,25 @@ export function ScheduleGrid() {
     async function run() {
       setLoading(true);
       try {
-        const res = await fetch(`/api/luna?an=${year}&luna=${month}`);
+        const res = await fetch(
+          `/api/luna?an=${year}&luna=${month}&tab=${tabParamFromPost(post)}&foaie=${foaie}`,
+        );
         if (!res.ok) throw new Error(await readError(res));
         const data = (await res.json()) as LunaResponse;
         if (cancelled) return;
         const mapped = mapLunaToState(data, dayColumns);
         setAllStaff(mapped.staff);
         setGrid(mapped.grid);
+        const nextFoi =
+          data.foi && data.foi.length > 0 ? data.foi : [1];
+        setFoi(nextFoi);
+        // Dacă foaia din URL nu există, du-te pe prima
+        if (data.foaie && data.foaie !== foaie) {
+          router.replace(
+            `${pathname}?${buildMonthQuery(year, month, post, data.foaie)}`,
+            { scroll: false },
+          );
+        }
         setActive(null);
         setPanelOpen(false);
         setError(null);
@@ -382,7 +410,134 @@ export function ScheduleGrid() {
       cancelled = true;
       if (statusTimer.current) window.clearTimeout(statusTimer.current);
     };
-  }, [dayColumns, year, month]);
+  }, [dayColumns, year, month, post, foaie, pathname, router]);
+
+  async function createFoaie() {
+    if (creatingFoaie || loading) return;
+    setCreatingFoaie(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/foi", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ an: year, luna: month, post }),
+      });
+      if (!res.ok) throw new Error(await readError(res));
+      const data = (await res.json()) as { foaie: number; foi: number[] };
+      setFoi(data.foi);
+      flashStatus(`Sheet ${data.foaie} creat`);
+      router.push(
+        `${pathname}?${buildMonthQuery(year, month, post, data.foaie)}`,
+        { scroll: false },
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Nu s-a putut crea foaia");
+    } finally {
+      setCreatingFoaie(false);
+    }
+  }
+
+  function currentFoaieHasData(): boolean {
+    for (const person of staff) {
+      const row = grid[person.id];
+      if (!row) continue;
+      for (const col of dayColumns) {
+        const cell = row[col.key];
+        if (!cell) continue;
+        if (cell.valoare || cell.ciorna) return true;
+      }
+    }
+    return false;
+  }
+
+  async function removeCurrentFoaie() {
+    if (deletingFoaie || loading) return;
+    if (foi.length <= 1) {
+      setError("Nu poți șterge singura foaie");
+      return;
+    }
+
+    const hasData = currentFoaieHasData();
+    if (hasData) {
+      const ok = window.confirm(
+        `Sheet ${foaie} are programări completate.\n\nȘtergi definitiv foaia și toate casuțele de pe ea?\n\nAcțiunea nu poate fi anulată.`,
+      );
+      if (!ok) return;
+    } else {
+      const ok = window.confirm(`Ștergi Sheet ${foaie}?`);
+      if (!ok) return;
+    }
+
+    setDeletingFoaie(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/foi", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          an: year,
+          luna: month,
+          post,
+          foaie,
+          confirm: hasData,
+        }),
+      });
+      if (!res.ok) {
+        // Server cere confirmare (date pe foaie pe care UI nu le-a văzut)
+        if (res.status === 409) {
+          const data = (await res.json()) as {
+            error?: string;
+            needsConfirm?: boolean;
+            filled?: number;
+          };
+          if (data.needsConfirm) {
+            const ok = window.confirm(
+              `Sheet ${foaie} are ${data.filled ?? "mai multe"} programări.\n\nȘtergi definitiv foaia?\n\nAcțiunea nu poate fi anulată.`,
+            );
+            if (!ok) return;
+            const res2 = await fetch("/api/foi", {
+              method: "DELETE",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                an: year,
+                luna: month,
+                post,
+                foaie,
+                confirm: true,
+              }),
+            });
+            if (!res2.ok) throw new Error(await readError(res2));
+            const data2 = (await res2.json()) as {
+              foi: number[];
+              nextFoaie: number;
+            };
+            setFoi(data2.foi);
+            flashStatus(`Sheet ${foaie} șters`);
+            router.push(
+              `${pathname}?${buildMonthQuery(year, month, post, data2.nextFoaie)}`,
+              { scroll: false },
+            );
+            return;
+          }
+        }
+        throw new Error(await readError(res));
+      }
+      const data = (await res.json()) as {
+        foi: number[];
+        nextFoaie: number;
+      };
+      setFoi(data.foi);
+      flashStatus(`Sheet ${foaie} șters`);
+      router.push(
+        `${pathname}?${buildMonthQuery(year, month, post, data.nextFoaie)}`,
+        { scroll: false },
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Nu s-a putut șterge foaia");
+    } finally {
+      setDeletingFoaie(false);
+    }
+  }
 
   const activate = useCallback(
     (row: number, col: number) => {
@@ -475,6 +630,7 @@ export function ScheduleGrid() {
           valoare: payload.valoare || null,
           ciorna: payload.ciorna,
           culoare: payload.culoare,
+          foaie,
         }),
       });
       if (!res.ok) throw new Error(await readError(res));
@@ -517,12 +673,18 @@ export function ScheduleGrid() {
       const saveRes = await fetch("/api/grafice", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ an: year, luna: month, post }),
+        body: JSON.stringify({ an: year, luna: month, post, foaie }),
       });
       if (!saveRes.ok) throw new Error(await readError(saveRes));
       const saved = (await saveRes.json()) as { snapshot: GraficPdfData };
 
-      const fileName = graficExportFileName(year, month, post, format);
+      const fileName = graficExportFileName(
+        year,
+        month,
+        post,
+        format,
+        foaie > 1 ? `sheet${foaie}` : "",
+      );
       await downloadGraficExport(saved.snapshot, fileName, format);
       flashStatus(
         `${exportFormatLabel(format)} ${postLabel(post)} descărcat + salvat în arhivă`,
@@ -1059,6 +1221,50 @@ export function ScheduleGrid() {
               ) : null}
             </DragOverlay>
           </DndContext>
+        </div>
+
+        <div className="mt-2 flex flex-wrap items-end gap-0.5 border-b border-slate-200">
+          {foi.map((n) => {
+            const activeSheet = n === foaie;
+            return (
+              <button
+                key={n}
+                type="button"
+                disabled={loading}
+                onClick={() => setFoaieTab(n)}
+                className={[
+                  "rounded-t-lg border border-b-0 px-3.5 py-2 text-sm font-medium transition-colors duration-150",
+                  activeSheet
+                    ? "relative z-[1] -mb-px border-slate-300 bg-white text-sky-800"
+                    : "border-transparent bg-slate-100 text-slate-600 hover:bg-slate-200/80 hover:text-slate-800",
+                ].join(" ")}
+              >
+                Sheet {n}
+              </button>
+            );
+          })}
+          <button
+            type="button"
+            disabled={loading || creatingFoaie || foi.length >= 50}
+            onClick={() => void createFoaie()}
+            title="Adaugă foaie goală"
+            className="mb-0.5 ml-1 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-2.5 py-1.5 text-sm font-semibold text-slate-600 transition-colors hover:border-sky-400 hover:bg-sky-50 hover:text-sky-800 disabled:opacity-50"
+          >
+            {creatingFoaie ? "…" : "+"}
+          </button>
+          <button
+            type="button"
+            disabled={loading || deletingFoaie || foi.length <= 1}
+            onClick={() => void removeCurrentFoaie()}
+            title={
+              foi.length <= 1
+                ? "Nu poți șterge singura foaie"
+                : `Șterge Sheet ${foaie} (foaia curentă)`
+            }
+            className="mb-0.5 ml-1 rounded-lg border border-rose-200 bg-white px-2.5 py-1.5 text-sm font-medium text-rose-700 transition-colors hover:border-rose-300 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {deletingFoaie ? "…" : `Șterge Sheet ${foaie}`}
+          </button>
         </div>
 
         <div className="mt-3">

@@ -19,6 +19,12 @@ export function parseMonth(value: unknown): number | null {
   return n;
 }
 
+export function parseFoaieParam(value: unknown): number | null {
+  const n = typeof value === "number" ? value : Number(value);
+  if (!Number.isInteger(n) || n < 1 || n > 50) return null;
+  return n;
+}
+
 export function parseUuidList(
   value: unknown,
   opts?: { max?: number },
