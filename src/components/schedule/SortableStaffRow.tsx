@@ -4,6 +4,7 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { CSSProperties, ReactNode } from "react";
 import type { AngajatPost } from "@/lib/post";
+import type { ProgramareCuloare } from "@/lib/culoare";
 import { CellFocus } from "./CellFocus";
 
 export type StaffMember = {
@@ -23,7 +24,10 @@ type SortableStaffRowProps = {
   staff: StaffMember;
   rowIndex: number;
   columns: ColumnForRow[];
-  values: Record<string, { valoare: string; ciorna: "A" | "R" | null }>;
+  values: Record<
+    string,
+    { valoare: string; ciorna: "A" | "R" | null; culoare: ProgramareCuloare }
+  >;
   activeCol: number | null;
   onActivate: (row: number, col: number) => void;
   onDelete: (staff: StaffMember) => void;
@@ -144,7 +148,7 @@ export function SortableStaffRow({
             <span
               className={[
                 "truncate font-semibold tracking-wide text-slate-800 uppercase",
-                compactName ? "text-[10px] leading-tight" : "text-[11px]",
+                compactName ? "text-[11px] leading-tight" : "text-[11px]",
               ].join(" ")}
               title={staff.name}
             >
@@ -190,12 +194,13 @@ export function SortableStaffRow({
             key={`${staff.id}-${col.key}`}
             className={[
               "border-0 border-r border-b border-b-slate-200 border-r-slate-300 p-0 align-middle",
-              weekend ? "bg-slate-100" : "bg-white",
+              weekend ? "bg-[#F5C09A]" : "bg-white",
             ].join(" ")}
           >
             <CellFocus
               value={values[col.key]?.valoare ?? ""}
               ciorna={values[col.key]?.ciorna ?? null}
+              culoare={values[col.key]?.culoare ?? "black"}
               active={isActive}
               weekend={weekend}
               onClick={() => {
@@ -209,7 +214,7 @@ export function SortableStaffRow({
       {showOsd && (
         <td
           className={[
-            "min-w-[2.75rem] border-0 border-b border-l border-b-slate-200 border-l-slate-300 bg-slate-50 px-1.5 text-center align-middle text-[11px] tabular-nums",
+            "min-w-[2.75rem] border-0 border-b border-l border-b-slate-200 border-l-slate-300 bg-slate-50 px-1.5 text-center align-middle text-[15px] tabular-nums",
             osdHours > 0
               ? "font-semibold text-slate-800"
               : "font-medium text-slate-400",
@@ -225,7 +230,7 @@ export function SortableStaffRow({
 
 export function SortableOverlayRow({ children }: { children: ReactNode }) {
   return (
-    <table className="border-collapse text-[11px]">
+    <table className="border-collapse text-[15px]">
       <tbody>{children}</tbody>
     </table>
   );

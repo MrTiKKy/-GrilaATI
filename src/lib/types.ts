@@ -37,6 +37,8 @@ export type ProgramareDto = {
   valoare: ProgramareValoare | null;
   /** Secție A sau R; null = nesetat. Stocat în coloana `ciorna`. */
   ciorna: SectieValoare | null;
+  /** Culori text: black (default) | red | blue | green | yellow */
+  culoare?: string | null;
 };
 
 export type LunaResponse = {
@@ -89,6 +91,8 @@ export type UpsertProgramareBody = {
   valoare: string | null;
   /** 'A' | 'R' | null */
   ciorna?: string | null;
+  /** 'black' | 'red' | 'blue' | 'green' | 'yellow' | null */
+  culoare?: string | null;
 };
 
 /** Snapshot salvat pentru PDF (arhiva grafice_finale) */
@@ -96,6 +100,12 @@ export type GraficSnapshot = {
   title: string;
   days: Array<{ day: number; abbr: string; weekend: boolean }>;
   rows: Array<{ name: string; cells: string[]; osd: string }>;
+  footer?: {
+    delegatName: string;
+    delegatLabel: string;
+    medicSef: string;
+    asSef: string;
+  };
 };
 
 export type GraficFinalMeta = {

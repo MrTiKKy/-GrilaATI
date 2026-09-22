@@ -1,4 +1,5 @@
 import { getDb } from "@/lib/db";
+import { loadGraficFooter } from "@/lib/loadGraficFooter";
 import { loadOreOsdRates } from "@/lib/loadOreOsd";
 import { buildGraficTitle, type AngajatPost } from "@/lib/post";
 import { toDateString, type GraficSnapshot } from "@/lib/types";
@@ -19,7 +20,10 @@ export async function buildGraficSnapshotFromDb(
   const endDate = new Date(Date.UTC(an, luna, 1));
   const end = endDate.toISOString().slice(0, 10);
   const daysInMonth = new Date(an, luna, 0).getDate();
-  const osdRates = await loadOreOsdRates();
+  const [osdRates, footer] = await Promise.all([
+    loadOreOsdRates(),
+    loadGraficFooter(),
+  ]);
 
   const days = Array.from({ length: daysInMonth }, (_, i) => {
     const day = i + 1;
@@ -76,5 +80,6 @@ export async function buildGraficSnapshotFromDb(
         osd: osd > 0 ? String(osd) : "",
       };
     }),
+    footer,
   };
 }

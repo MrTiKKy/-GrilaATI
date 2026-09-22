@@ -28,8 +28,11 @@ import {
 } from "react";
 import type { LunaResponse } from "@/lib/types";
 import {
+  culoareFromDb,
+  type ProgramareCuloare,
+} from "@/lib/culoare";
+import {
   buildGraficTitle,
-  graficPdfFileName,
   postFromTabParam,
   postLabel,
   tabParamFromPost,
@@ -48,8 +51,19 @@ import {
   SortableStaffRow,
   type StaffMember,
 } from "./SortableStaffRow";
-import { downloadGraficPdf } from "@/components/pdf/exportGraficPdf";
+import { ExportGraficMenu } from "@/components/export/ExportGraficMenu";
+import { downloadGraficExport } from "@/components/export/downloadGraficExport";
 import type { GraficPdfData } from "@/components/pdf/GraficAtiPdf";
+import {
+  exportFormatLabel,
+  graficExportFileName,
+  type ExportFormat,
+} from "@/lib/exportFormats";
+import {
+  GRAFIC_FOOTER_DEFAULTS,
+  type GraficFooterTexts,
+} from "@/lib/graficFooter";
+import { EditableFooterText } from "./EditableFooterText";
 import { totalOsdOre } from "@/lib/weekendOre";
 import {
   cellsToRates,
@@ -72,7 +86,11 @@ type DayColumn = {
 
 type ActiveCell = { row: number; col: number };
 
-type CellData = { valoare: string; ciorna: "A" | "R" | null };
+type CellData = {
+  valoare: string;
+  ciorna: "A" | "R" | null;
+  culoare: ProgramareCuloare;
+};
 
 // staffId -> columnKey (d-N) -> cell
 type GridState = Record<string, Record<string, CellData>>;
@@ -114,7 +132,7 @@ function buildWeeks(days: DayColumn[]): DayColumn[][] {
 }
 
 function emptyCell(): CellData {
-  return { valoare: "", ciorna: null };
+  return { valoare: "", ciorna: null, culoare: "black" };
 }
 
 function emptyRow(columns: DayColumn[]): Record<string, CellData> {
@@ -154,6 +172,7 @@ function mapLunaToState(
     grid[p.angajatId][key] = {
       valoare: p.valoare ?? "",
       ciorna: p.ciorna === "A" || p.ciorna === "R" ? p.ciorna : null,
+      culoare: culoareFromDb(p.culoare),
     };
   }
 
@@ -252,6 +271,9 @@ export function ScheduleGrid() {
   const [addOpen, setAddOpen] = useState(false);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [footerTexts, setFooterTexts] = useState<GraficFooterTexts>(
+    GRAFIC_FOOTER_DEFAULTS,
+  );
   const gridRef = useRef<HTMLDivElement>(null);
   const statusTimer = useRef<number | null>(null);
   const touchStartX = useRef<number | null>(null);
@@ -416,6 +438,7 @@ export function ScheduleGrid() {
     const next: CellData = {
       valoare: payload.valoare,
       ciorna: payload.ciorna,
+      culoare: payload.culoare,
     };
 
     const wasCo = prev.valoare === "CO";
@@ -451,6 +474,7 @@ export function ScheduleGrid() {
           data: col.date,
           valoare: payload.valoare || null,
           ciorna: payload.ciorna,
+          culoare: payload.culoare,
         }),
       });
       if (!res.ok) throw new Error(await readError(res));
@@ -485,7 +509,7 @@ export function ScheduleGrid() {
     }
   }
 
-  async function exportPdfTest() {
+  async function exportGrafic(format: ExportFormat) {
     if (exporting || loading) return;
     setExporting(true);
     setError(null);
@@ -498,11 +522,17 @@ export function ScheduleGrid() {
       if (!saveRes.ok) throw new Error(await readError(saveRes));
       const saved = (await saveRes.json()) as { snapshot: GraficPdfData };
 
-      const fileName = graficPdfFileName(year, month, post);
-      await downloadGraficPdf(saved.snapshot, fileName);
-      flashStatus(`PDF ${postLabel(post)} descărcat + salvat în arhivă`);
+      const fileName = graficExportFileName(year, month, post, format);
+      await downloadGraficExport(saved.snapshot, fileName, format);
+      flashStatus(
+        `${exportFormatLabel(format)} ${postLabel(post)} descărcat + salvat în arhivă`,
+      );
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Export PDF eșuat");
+      setError(
+        e instanceof Error
+          ? e.message
+          : `Export ${exportFormatLabel(format)} eșuat`,
+      );
     } finally {
       setExporting(false);
     }
@@ -649,6 +679,7 @@ export function ScheduleGrid() {
       detail: `${col.abbr} · ${detail}`,
       currentValue: cell.valoare,
       currentCiorna: cell.ciorna,
+      currentCuloare: cell.culoare ?? "black",
     };
   }, [active, columns, grid, staff, year, monthIndex]);
 
@@ -674,6 +705,25 @@ export function ScheduleGrid() {
       }
     }
     void loadRates();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadFooter() {
+      try {
+        const res = await fetch("/api/grafic-footer");
+        if (!res.ok) return;
+        const data = (await res.json()) as { footer: GraficFooterTexts };
+        if (cancelled || !data.footer) return;
+        setFooterTexts(data.footer);
+      } catch {
+        /* defaults */
+      }
+    }
+    void loadFooter();
     return () => {
       cancelled = true;
     };
@@ -781,16 +831,12 @@ export function ScheduleGrid() {
             )}
           </div>
           <div className="flex shrink-0 flex-col gap-2 sm:flex-row sm:flex-wrap">
-            <button
-              type="button"
-              onClick={() => void exportPdfTest()}
-              disabled={exporting || loading || staff.length === 0}
-              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm font-medium text-slate-700 transition-colors duration-150 hover:border-sky-300 hover:bg-sky-50 hover:text-sky-800 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:py-2"
-            >
-              {exporting
-                ? "Se generează…"
-                : `Export PDF ${postLabel(post)}`}
-            </button>
+            <ExportGraficMenu
+              disabled={loading || staff.length === 0}
+              busy={exporting}
+              label={`Export ${postLabel(post)}`}
+              onSelect={(format) => void exportGrafic(format)}
+            />
             <Link
               href="/istoric"
               className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-center text-sm font-medium text-slate-700 transition-colors duration-150 hover:border-sky-300 hover:bg-sky-50 hover:text-sky-800 sm:w-auto sm:py-2"
@@ -890,7 +936,7 @@ export function ScheduleGrid() {
           >
             <table
               className={[
-                "schedule-grid border-separate border-spacing-0 text-[11px]",
+                "schedule-grid border-separate border-spacing-0 text-[15px]",
                 isDesktop ? "w-full" : "w-full table-fixed",
               ].join(" ")}
             >
@@ -899,7 +945,7 @@ export function ScheduleGrid() {
                   <th
                     rowSpan={2}
                     className={[
-                      "sticky left-0 z-20 border-0 border-b border-r border-b-slate-200 border-r-slate-300 bg-slate-50 py-2 text-left text-xs font-semibold tracking-wide text-slate-600 uppercase",
+                      "sticky left-0 z-20 border-0 border-b border-r border-b-slate-200 border-r-slate-300 bg-slate-50 py-2 text-left text-[11px] font-semibold tracking-wide text-slate-600 uppercase",
                       isDesktop
                         ? "min-w-[148px] px-2"
                         : "w-[4.75rem] max-w-[4.75rem] px-1",
@@ -912,8 +958,8 @@ export function ScheduleGrid() {
                       key={`${col.key}-n`}
                       className={[
                         "border-0 border-r border-b border-b-slate-200 border-r-slate-300 px-0 py-1.5 text-center font-semibold text-slate-700",
-                        isDesktop ? "min-w-[1.85rem]" : "",
-                        col.weekend ? "bg-slate-100" : "bg-slate-50",
+                        isDesktop ? "min-w-[2.1rem]" : "",
+                        col.weekend ? "bg-[#F5C09A]" : "bg-slate-50",
                       ].join(" ")}
                     >
                       {col.day}
@@ -922,7 +968,7 @@ export function ScheduleGrid() {
                   {isDesktop && (
                     <th
                       rowSpan={2}
-                      className="min-w-[2.75rem] border-0 border-b border-l border-b-slate-200 border-l-slate-300 bg-slate-50 px-1.5 py-2 text-center text-xs font-semibold text-slate-600"
+                      className="min-w-[2.75rem] border-0 border-b border-l border-b-slate-200 border-l-slate-300 bg-slate-50 px-1.5 py-2 text-center text-[11px] font-semibold text-slate-600"
                     >
                       O.SD
                     </th>
@@ -934,8 +980,8 @@ export function ScheduleGrid() {
                       key={`${col.key}-a`}
                       className={[
                         "border-0 border-r border-b border-b-slate-200 border-r-slate-300 px-0 py-1 text-center font-medium text-slate-500",
-                        isDesktop ? "min-w-[1.85rem]" : "",
-                        col.weekend ? "bg-slate-100" : "bg-white",
+                        isDesktop ? "min-w-[2.1rem]" : "",
+                        col.weekend ? "bg-[#F5C09A]" : "bg-white",
                       ].join(" ")}
                     >
                       {col.abbr}
@@ -996,6 +1042,9 @@ export function ScheduleGrid() {
                         <CellFocus
                           value={grid[draggingStaff.id]?.[col.key]?.valoare ?? ""}
                           ciorna={grid[draggingStaff.id]?.[col.key]?.ciorna ?? null}
+                          culoare={
+                            grid[draggingStaff.id]?.[col.key]?.culoare ?? "black"
+                          }
                           active={false}
                           weekend={col.weekend}
                           onClick={() => {}}
@@ -1022,9 +1071,54 @@ export function ScheduleGrid() {
           </button>
         </div>
 
-        <footer className="mt-5 grid grid-cols-1 gap-2 border-t border-slate-100 pt-4 text-[11px] font-medium tracking-wide text-slate-600 uppercase sm:grid-cols-2">
-          <p className="text-left">MEDIC SEF: DR. SUSANU CAROLINA</p>
-          <p className="text-left sm:text-right">AS SEF: POPA NICOLETA</p>
+        <footer className="mt-5 space-y-3 border-t border-slate-100 pt-4">
+          <p className="text-[10px] font-medium tracking-wide text-slate-400 uppercase">
+            Footer grafic — hover / click pentru editare
+          </p>
+          <div className="overflow-hidden rounded-xl border border-slate-200">
+            <div className="grid grid-cols-[minmax(7rem,9rem)_1fr] border-b border-slate-100">
+              <div className="border-r border-slate-100 bg-slate-50/80">
+                <EditableFooterText
+                  fieldKey="delegat_name"
+                  value={footerTexts.delegatName}
+                  align="left"
+                  onSaved={(v) =>
+                    setFooterTexts((f) => ({ ...f, delegatName: v }))
+                  }
+                  onError={setError}
+                />
+              </div>
+              <div className="bg-white">
+                <EditableFooterText
+                  fieldKey="delegat_label"
+                  value={footerTexts.delegatLabel}
+                  align="center"
+                  onSaved={(v) =>
+                    setFooterTexts((f) => ({ ...f, delegatLabel: v }))
+                  }
+                  onError={setError}
+                />
+              </div>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 gap-1 sm:grid-cols-2">
+            <EditableFooterText
+              fieldKey="medic_sef"
+              value={footerTexts.medicSef}
+              align="left"
+              italic
+              onSaved={(v) => setFooterTexts((f) => ({ ...f, medicSef: v }))}
+              onError={setError}
+            />
+            <EditableFooterText
+              fieldKey="as_sef"
+              value={footerTexts.asSef}
+              align="right"
+              italic
+              onSaved={(v) => setFooterTexts((f) => ({ ...f, asSef: v }))}
+              onError={setError}
+            />
+          </div>
         </footer>
       </div>
 

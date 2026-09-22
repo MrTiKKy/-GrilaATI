@@ -7,6 +7,11 @@ import {
   useRef,
   useState,
 } from "react";
+import {
+  CULOARE_OPTIONS,
+  culoareHex,
+  type ProgramareCuloare,
+} from "@/lib/culoare";
 import { SECTIE_VALUES, type SectieValoare } from "@/lib/types";
 
 export const CELL_OPTIONS = [
@@ -28,11 +33,13 @@ export type PanelContext = {
   detail: string;
   currentValue: string;
   currentCiorna: SectieValoare | null;
+  currentCuloare: ProgramareCuloare;
 };
 
 export type ConfirmPayload = {
   valoare: string;
   ciorna: SectieValoare | null;
+  culoare: ProgramareCuloare;
 };
 
 type CellOptionPopupProps = {
@@ -55,7 +62,6 @@ function computePosition(
   const vw = window.innerWidth;
   const vh = window.innerHeight;
 
-  // Vertical: preferință sub casuță; la extremă jos → sus (partea opusă)
   const spaceBelow = vh - anchor.bottom - MARGIN;
   const spaceAbove = anchor.top - MARGIN;
   const placeBelow =
@@ -66,9 +72,6 @@ function computePosition(
     : anchor.top - GAP - popupH;
   top = Math.max(MARGIN, Math.min(top, vh - popupH - MARGIN));
 
-  // Orizontal: preferință aliniat la stânga casuței (se deschide spre dreapta).
-  // Extremă dreapta → se deschide spre stânga (partea opusă).
-  // Extremă stânga → rămâne spre dreapta.
   const fitsLeftAligned = anchor.left + popupW <= vw - MARGIN;
   const fitsRightAligned = anchor.right - popupW >= MARGIN;
   let left: number;
@@ -96,6 +99,9 @@ export function CellOptionPopup({
   const [sectie, setSectie] = useState<SectieValoare | null>(
     context?.currentCiorna ?? null,
   );
+  const [culoare, setCuloare] = useState<ProgramareCuloare>(
+    context?.currentCuloare ?? "black",
+  );
   const [saving, setSaving] = useState(false);
 
   const cellKey = context
@@ -106,7 +112,7 @@ export function CellOptionPopup({
     if (!context) return;
     setDraft(context.currentValue);
     setSectie(context.currentCiorna);
-    // Reset doar la schimbarea casuței
+    setCuloare(context.currentCuloare ?? "black");
     // eslint-disable-next-line react-hooks/exhaustive-deps -- cellKey
   }, [cellKey]);
 
@@ -176,15 +182,21 @@ export function CellOptionPopup({
 
   async function commit(next: ConfirmPayload) {
     if (saving) return;
-    const rollback = { valoare: draft, ciorna: sectie };
+    const rollback = {
+      valoare: draft,
+      ciorna: sectie,
+      culoare,
+    };
     setDraft(next.valoare);
     setSectie(next.ciorna);
+    setCuloare(next.culoare);
     setSaving(true);
     try {
       const result = await onSelect(next);
       if (result === false) {
         setDraft(rollback.valoare);
         setSectie(rollback.ciorna);
+        setCuloare(rollback.culoare);
       }
     } finally {
       setSaving(false);
@@ -192,15 +204,21 @@ export function CellOptionPopup({
   }
 
   function pickValoare(value: string) {
-    void commit({ valoare: value, ciorna: sectie });
+    void commit({ valoare: value, ciorna: sectie, culoare });
   }
 
   function pickSectie(next: SectieValoare) {
     const ciorna = sectie === next ? null : next;
-    void commit({ valoare: draft, ciorna });
+    void commit({ valoare: draft, ciorna, culoare });
+  }
+
+  function pickCuloare(next: ProgramareCuloare) {
+    void commit({ valoare: draft, ciorna: sectie, culoare: next });
   }
 
   if (!open || !context) return null;
+
+  const previewColor = culoareHex(culoare);
 
   return (
     <div
@@ -235,11 +253,38 @@ export function CellOptionPopup({
         </button>
       </div>
 
-      <div className="mb-2 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-center text-sm font-semibold text-slate-800">
-        <span>{draft || "·"}</span>
+      <div className="mb-2 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-center text-sm font-semibold">
+        <span style={{ color: previewColor }}>{draft || "·"}</span>
         {sectie && (
           <span className="draft-only ml-1 text-amber-700">{sectie}</span>
         )}
+      </div>
+
+      <p className="mb-1 text-[10px] font-medium tracking-wide text-slate-500 uppercase">
+        Culoare
+      </p>
+      <div className="mb-2 flex gap-1.5">
+        {CULOARE_OPTIONS.map((opt) => {
+          const selected = culoare === opt.id;
+          return (
+            <button
+              key={opt.id}
+              type="button"
+              disabled={saving}
+              title={opt.label}
+              aria-label={opt.label}
+              aria-pressed={selected}
+              onClick={() => pickCuloare(opt.id)}
+              className={[
+                "h-8 flex-1 rounded-lg border-2 transition-transform duration-100 disabled:opacity-50",
+                selected
+                  ? "scale-105 border-slate-900 ring-2 ring-sky-400 ring-offset-1"
+                  : "border-slate-300 hover:scale-[1.03]",
+              ].join(" ")}
+              style={{ backgroundColor: opt.hex }}
+            />
+          );
+        })}
       </div>
 
       <p className="mb-1 text-[10px] font-medium tracking-wide text-slate-500 uppercase">

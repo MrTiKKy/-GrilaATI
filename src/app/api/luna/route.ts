@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { guardRead } from "@/lib/apiGuard";
+import { culoareFromDb } from "@/lib/culoare";
 import { isAngajatPost } from "@/lib/post";
 import { parseMonth, parseYear } from "@/lib/validate";
 import {
@@ -52,7 +53,7 @@ export async function GET(request: Request) {
     `;
 
     const programariRows = await sql`
-      SELECT p.angajat_id, p.data::text AS data, p.valoare, p.ciorna
+      SELECT p.angajat_id, p.data::text AS data, p.valoare, p.ciorna, p.culoare
       FROM programari p
       INNER JOIN angajati a ON a.id = p.angajat_id AND a.activ = true
       WHERE p.data >= ${start}::date
@@ -93,6 +94,7 @@ export async function GET(request: Request) {
         data: toDateString(row.data),
         valoare,
         ciorna,
+        culoare: culoareFromDb(row.culoare),
       };
     });
 
@@ -101,9 +103,11 @@ export async function GET(request: Request) {
   } catch (error) {
     console.error("GET /api/luna", error);
     const message =
-      error instanceof Error && /column .*post/i.test(error.message)
-        ? "Coloana post lipsește — rulează sql/add_post.sql în Neon"
-        : "Nu s-au putut încărca datele lunii";
+      error instanceof Error && /culoare/i.test(error.message)
+        ? "Coloana culoare lipsește — rulează sql/add_culoare.sql în Neon"
+        : error instanceof Error && /column .*post/i.test(error.message)
+          ? "Coloana post lipsește — rulează sql/add_post.sql în Neon"
+          : "Nu s-au putut încărca datele lunii";
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

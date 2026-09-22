@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { writeAudit } from "@/lib/audit";
 import { guardWrite } from "@/lib/apiGuard";
+import {
+  culoareFromDb,
+  culoareToDb,
+  isProgramareCuloare,
+} from "@/lib/culoare";
 import { getDb } from "@/lib/db";
 import { clientKey } from "@/lib/rateLimit";
 import { readJsonLimited } from "@/lib/readJsonLimited";
@@ -56,6 +61,20 @@ export async function PUT(request: Request) {
       );
     }
 
+    let culoare: string | null = null;
+    if (
+      body.culoare === null ||
+      body.culoare === undefined ||
+      body.culoare === "" ||
+      body.culoare === "black"
+    ) {
+      culoare = null;
+    } else if (isProgramareCuloare(body.culoare)) {
+      culoare = culoareToDb(body.culoare);
+    } else {
+      return NextResponse.json({ error: "culoare invalidă" }, { status: 400 });
+    }
+
     if (valoareRaw === null && ciorna === null) {
       await sql`
         DELETE FROM programari
@@ -72,18 +91,19 @@ export async function PUT(request: Request) {
     }
 
     await sql`
-      INSERT INTO programari (angajat_id, data, valoare, ciorna)
-      VALUES (${angajatId}::uuid, ${body.data}::date, ${valoareRaw}, ${ciorna})
+      INSERT INTO programari (angajat_id, data, valoare, ciorna, culoare)
+      VALUES (${angajatId}::uuid, ${body.data}::date, ${valoareRaw}, ${ciorna}, ${culoare})
       ON CONFLICT (angajat_id, data)
       DO UPDATE SET
         valoare = EXCLUDED.valoare,
-        ciorna = EXCLUDED.ciorna
+        ciorna = EXCLUDED.ciorna,
+        culoare = EXCLUDED.culoare
     `;
 
     await writeAudit({
       action: "programare_upsert",
       resource: angajatId,
-      detail: { data: body.data, valoare: valoareRaw, ciorna },
+      detail: { data: body.data, valoare: valoareRaw, ciorna, culoare },
       ip: clientKey(request),
     });
 
@@ -92,13 +112,16 @@ export async function PUT(request: Request) {
       deleted: false,
       valoare: valoareRaw,
       ciorna,
+      culoare: culoareFromDb(culoare),
     });
   } catch (error) {
     console.error("PUT /api/programari", error);
     const message =
-      error instanceof Error && /ciorna/i.test(error.message)
-        ? "Coloana ciorna lipsește — rulează sql/add_ciorna.sql în Neon"
-        : "Nu s-a putut salva programarea";
+      error instanceof Error && /culoare/i.test(error.message)
+        ? "Coloana culoare lipsește — rulează sql/add_culoare.sql în Neon"
+        : error instanceof Error && /ciorna/i.test(error.message)
+          ? "Coloana ciorna lipsește — rulează sql/add_ciorna.sql în Neon"
+          : "Nu s-a putut salva programarea";
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

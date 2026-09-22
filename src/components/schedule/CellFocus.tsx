@@ -1,11 +1,13 @@
 "use client";
 
 import type { CSSProperties } from "react";
+import { culoareHex, type ProgramareCuloare } from "@/lib/culoare";
 import type { SectieValoare } from "@/lib/types";
 
 type CellFocusProps = {
   value: string;
   ciorna?: SectieValoare | null;
+  culoare?: ProgramareCuloare | null;
   active: boolean;
   weekend?: boolean;
   onClick: () => void;
@@ -14,11 +16,13 @@ type CellFocusProps = {
 export function CellFocus({
   value,
   ciorna,
+  culoare,
   active,
   weekend,
   onClick,
 }: CellFocusProps) {
   const sectie = ciorna === "A" || ciorna === "R" ? ciorna : null;
+  const color = culoareHex(culoare);
 
   const activeRing: CSSProperties | undefined = active
     ? { boxShadow: "inset 0 0 0 2px rgb(14 165 233)" }
@@ -29,21 +33,20 @@ export function CellFocus({
       type="button"
       onClick={onClick}
       onMouseDown={(e) => {
-        // Previne focus + scroll automat în container la click
         e.preventDefault();
       }}
       tabIndex={-1}
       data-cell-active={active ? "true" : undefined}
       style={activeRing}
       className={[
-        "flex h-full min-h-8 w-full min-w-[1.85rem] items-center justify-center gap-0.5 px-0",
-        "text-[11px] font-medium text-slate-800",
+        "flex h-full min-h-9 w-full min-w-[2.1rem] items-center justify-center gap-0.5 px-0",
+        "text-[15px] font-medium",
         "transition-[background-color,box-shadow] duration-150 ease-out",
         "outline-none focus-visible:outline-none rounded-none",
         active
           ? "relative z-[1] bg-sky-50"
           : [
-              weekend ? "bg-slate-100" : "bg-white",
+              weekend ? "bg-[#F5C09A]" : "bg-white",
               "hover:z-[1] hover:bg-sky-100",
               "hover:shadow-[inset_0_0_0_1.5px_rgb(56_189_248)]",
             ].join(" "),
@@ -51,9 +54,10 @@ export function CellFocus({
     >
       <span
         className={[
-          "leading-none",
-          value ? "text-slate-900" : sectie ? "text-slate-300" : "text-transparent",
+          "leading-none font-semibold",
+          value ? "" : sectie ? "text-slate-300" : "text-transparent",
         ].join(" ")}
+        style={value ? { color } : undefined}
       >
         {value || "·"}
       </span>

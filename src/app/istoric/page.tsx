@@ -2,8 +2,14 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { downloadGraficPdf } from "@/components/pdf/exportGraficPdf";
-import type { GraficPdfData } from "@/components/pdf/GraficAtiPdf";
+import { ExportGraficMenu } from "@/components/export/ExportGraficMenu";
+import { downloadGraficExport } from "@/components/export/downloadGraficExport";
+import {
+  exportFormatLabel,
+  graficExportFileName,
+  postFromGraficTitle,
+  type ExportFormat,
+} from "@/lib/exportFormats";
 import type {
   GraficFinalDetail,
   GraficFinalMeta,
@@ -86,23 +92,25 @@ export default function IstoricPage() {
     }));
   }, [items]);
 
-  async function regenerate(id: string, an: number, luna: number) {
+  async function downloadFromArchive(
+    id: string,
+    an: number,
+    luna: number,
+    format: ExportFormat,
+  ) {
     setBusyId(id);
     setError(null);
     try {
       const res = await fetch(`/api/grafice/${id}`);
       if (!res.ok) throw new Error(await readError(res));
       const detail = (await res.json()) as GraficFinalDetail;
-      const pdfData: GraficPdfData = detail.snapshot;
-      const kind = /INFIRMIERE/i.test(detail.titlu || pdfData.title)
-        ? "infirmiere"
-        : "asistenti";
-      const fileName = `grafic-${kind}-${an}-${String(luna).padStart(2, "0")}-arhiva.pdf`;
-      await downloadGraficPdf(pdfData, fileName);
-      setStatus("PDF regenerat din arhivă");
+      const post = postFromGraficTitle(detail.titlu || detail.snapshot.title);
+      const fileName = graficExportFileName(an, luna, post, format, "arhiva");
+      await downloadGraficExport(detail.snapshot, fileName, format);
+      setStatus(`${exportFormatLabel(format)} regenerat din arhivă`);
       window.setTimeout(() => setStatus(null), 2500);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Regenerare eșuată");
+      setError(e instanceof Error ? e.message : "Descărcare eșuată");
     } finally {
       setBusyId(null);
     }
@@ -196,25 +204,22 @@ export default function IstoricPage() {
                           </p>
                         </div>
                         <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap">
-                          <button
-                            type="button"
-                            disabled={busyId === item.id}
-                            onClick={() =>
-                              void regenerate(item.id, item.an, item.luna)
+                          <ExportGraficMenu
+                            busy={busyId === item.id}
+                            label="Descarcă"
+                            busyLabel="Se procesează…"
+                            align="right"
+                            className="w-full sm:w-auto"
+                            buttonClassName="inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-medium text-slate-700 transition-colors duration-150 hover:border-sky-300 hover:bg-sky-50 hover:text-sky-800 disabled:opacity-50 sm:w-auto sm:py-2"
+                            onSelect={(format) =>
+                              void downloadFromArchive(
+                                item.id,
+                                item.an,
+                                item.luna,
+                                format,
+                              )
                             }
-                            className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-medium text-slate-700 transition-colors duration-150 hover:border-sky-300 hover:bg-sky-50 hover:text-sky-800 disabled:opacity-50 sm:w-auto sm:py-2"
-                          >
-                            {busyId === item.id ? (
-                              "Se procesează…"
-                            ) : (
-                              <>
-                                <span className="sm:hidden">PDF</span>
-                                <span className="hidden sm:inline">
-                                  Generează PDF din nou
-                                </span>
-                              </>
-                            )}
-                          </button>
+                          />
                           <button
                             type="button"
                             disabled={busyId === item.id}
