@@ -34,11 +34,14 @@ export type GraficPdfData = {
 
 /** A4 landscape height (pt) */
 const PAGE_H = 595;
-const PAGE_PAD_TOP = 14;
-const PAGE_PAD_BOTTOM = 14;
-const TITLE_BLOCK = 22;
-const FOOTER_BLOCK = 28;
-const TABLE_GAP = 8;
+const PAGE_PAD_TOP = 8;
+const PAGE_PAD_BOTTOM = 10;
+const TITLE_BLOCK = 16;
+/** Spațiu pentru texte + ștampile sub tabel (ca pe formularul fizic) */
+const FOOTER_BLOCK = 52;
+const TABLE_GAP = 6;
+/** Rânduri goale înainte de MARCULESCU+DELEGAT */
+const EMPTY_BEFORE_DELEGAT = 1;
 
 const FONT_FAMILY = "GraficSerif";
 
@@ -65,7 +68,7 @@ const styles = StyleSheet.create({
   page: {
     paddingTop: PAGE_PAD_TOP,
     paddingBottom: PAGE_PAD_BOTTOM,
-    paddingHorizontal: 14,
+    paddingHorizontal: 10,
     fontFamily: FONT_FAMILY,
     fontSize: 8,
     color: "#000",
@@ -73,31 +76,31 @@ const styles = StyleSheet.create({
   title: {
     fontFamily: FONT_FAMILY,
     fontWeight: "bold",
-    fontSize: 11,
+    fontSize: 10,
     textAlign: "center",
     textTransform: "uppercase",
-    marginBottom: 6,
+    marginBottom: 4,
   },
   pageHint: {
     fontFamily: FONT_FAMILY,
     fontSize: 7,
     textAlign: "right",
-    marginBottom: 4,
+    marginBottom: 3,
     color: "#333",
   },
   table: {
     width: "100%",
-    borderTopWidth: 0.6,
-    borderLeftWidth: 0.6,
+    borderTopWidth: 1.1,
+    borderLeftWidth: 1.1,
     borderColor: "#000",
   },
   row: {
     flexDirection: "row",
   },
   nameCell: {
-    width: "13%",
-    borderRightWidth: 0.6,
-    borderBottomWidth: 0.6,
+    width: "15%",
+    borderRightWidth: 1.1,
+    borderBottomWidth: 1.1,
     borderColor: "#000",
     paddingHorizontal: 2,
     justifyContent: "center",
@@ -110,19 +113,19 @@ const styles = StyleSheet.create({
   dayCell: {
     flexGrow: 1,
     flexBasis: 0,
-    borderRightWidth: 0.6,
-    borderBottomWidth: 0.6,
+    borderRightWidth: 1.1,
+    borderBottomWidth: 1.1,
     borderColor: "#000",
     alignItems: "center",
     justifyContent: "center",
   },
   weekend: {
-    backgroundColor: "#d9d9d9",
+    backgroundColor: "#cfcfcf",
   },
   osdCell: {
-    width: "4%",
-    borderRightWidth: 0.6,
-    borderBottomWidth: 0.6,
+    width: "4.5%",
+    borderRightWidth: 1.1,
+    borderBottomWidth: 1.1,
     borderColor: "#000",
     alignItems: "center",
     justifyContent: "center",
@@ -139,37 +142,42 @@ const styles = StyleSheet.create({
   },
   cellText: {
     fontFamily: FONT_FAMILY,
+    fontWeight: "bold",
     textAlign: "center",
   },
   delegatMerged: {
     flexGrow: 1,
     flexBasis: 0,
-    borderRightWidth: 0.6,
-    borderBottomWidth: 0.6,
+    borderRightWidth: 1.1,
+    borderBottomWidth: 1.1,
     borderColor: "#000",
     alignItems: "center",
     justifyContent: "center",
   },
   footer: {
     marginTop: TABLE_GAP,
+    minHeight: FOOTER_BLOCK - TABLE_GAP,
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "flex-end",
+    alignItems: "flex-start",
+  },
+  footerCol: {
+    width: "42%",
   },
   footerText: {
     fontFamily: FONT_FAMILY,
     fontStyle: "italic",
-    fontSize: 9,
+    fontSize: 8.5,
     textTransform: "uppercase",
   },
 });
 
-/** Fonturi PDF proporționale cu înălțimea rândului (evită pagină goală). */
+/** Fonturi PDF proporționale cu înălțimea rândului (evită overflow / pagină goală). */
 function fontsForRow(rowH: number) {
-  const cell = Math.min(10, Math.max(6.5, rowH * 0.52));
-  const name = Math.min(7.5, Math.max(5.5, rowH * 0.42));
-  const header = Math.min(8, Math.max(6, rowH * 0.45));
-  const abbr = Math.min(7, Math.max(5.5, rowH * 0.4));
+  const cell = Math.min(10.5, Math.max(7, rowH * 0.5 + 1));
+  const name = Math.min(9, Math.max(6.5, rowH * 0.44 + 1));
+  const header = Math.min(8, Math.max(5.5, rowH * 0.44));
+  const abbr = Math.min(7, Math.max(5, rowH * 0.38));
   return { cell, name, header, abbr };
 }
 
@@ -302,11 +310,17 @@ function EmptyRows({
           <View style={styles.nameCell}>
             <Text> </Text>
           </View>
-          {Array.from({ length: dayCount }, (_, i) => (
-            <View key={`e-${idx}-${days[i].day}`} style={styles.dayCell}>
-              <Text> </Text>
-            </View>
-          ))}
+          {Array.from({ length: dayCount }, (_, i) => {
+            const d = days[i];
+            return (
+              <View
+                key={`e-${idx}-${d.day}`}
+                style={[styles.dayCell, d.weekend ? styles.weekend : undefined]}
+              >
+                <Text> </Text>
+              </View>
+            );
+          })}
           <View style={styles.osdCell}>
             <Text> </Text>
           </View>
@@ -359,17 +373,17 @@ export function GraficAtiPdf({ data }: { data: GraficPdfData }) {
         const includeDelegatBlock = isLast;
         const effectiveStaff = pageRows.length;
         const tableRowCount = includeDelegatBlock
-          ? 2 + effectiveStaff + 2 + 1
+          ? 2 + effectiveStaff + EMPTY_BEFORE_DELEGAT + 1
           : 2 + effectiveStaff;
-        const hint = hasHint ? 12 : 0;
+        const hint = hasHint ? 10 : 0;
         const usable =
           PAGE_H -
           PAGE_PAD_TOP -
           PAGE_PAD_BOTTOM -
           TITLE_BLOCK -
           hint -
-          FOOTER_BLOCK;
-        const h = Math.max(10, usable / tableRowCount);
+          (includeDelegatBlock ? FOOTER_BLOCK : 0);
+        const h = Math.max(9, usable / tableRowCount);
 
         return (
           <Page
@@ -396,7 +410,11 @@ export function GraficAtiPdf({ data }: { data: GraficPdfData }) {
               />
               {includeDelegatBlock && (
                 <>
-                  <EmptyRows count={2} days={data.days} rowH={h} />
+                  <EmptyRows
+                    count={EMPTY_BEFORE_DELEGAT}
+                    days={data.days}
+                    rowH={h}
+                  />
                   <DelegatRow footer={footer} rowH={h} />
                 </>
               )}
@@ -404,8 +422,12 @@ export function GraficAtiPdf({ data }: { data: GraficPdfData }) {
 
             {includeDelegatBlock && (
               <View style={styles.footer}>
-                <Text style={styles.footerText}>{footer.medicSef}</Text>
-                <Text style={styles.footerText}>{footer.asSef}</Text>
+                <View style={styles.footerCol}>
+                  <Text style={styles.footerText}>{footer.medicSef}</Text>
+                </View>
+                <View style={[styles.footerCol, { alignItems: "flex-end" }]}>
+                  <Text style={styles.footerText}>{footer.asSef}</Text>
+                </View>
               </View>
             )}
           </Page>

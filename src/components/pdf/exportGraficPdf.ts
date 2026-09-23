@@ -28,7 +28,7 @@ export function buildGraficPdfData(params: {
     .toLocaleDateString("ro-RO", { month: "long", year: "numeric" })
     .toUpperCase();
 
-  const title = `S.C.J.U. BRAILA - GRAFIC ASISTENTI ATI II – ${monthName}`;
+  const title = `S.C.J.U. BRAILA - GRAFIC ASISTENTI ATI II - ${monthName}`;
 
   return {
     title,

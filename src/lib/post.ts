@@ -46,9 +46,9 @@ export function buildGraficTitle(
 ): string {
   const name = MONTH_NAMES_RO[luna - 1] ?? String(luna);
   if (post === "infirmier") {
-    return `S.C.J.U. BRAILA - GRAFIC INFIRMIERE ATI – ${name} ${an}`;
+    return `S.C.J.U. BRAILA - GRAFIC INFIRMIERE ATI - ${name} ${an}`;
   }
-  return `S.C.J.U. BRAILA - GRAFIC ASISTENTI ATI II – ${name} ${an}`;
+  return `S.C.J.U. BRAILA - GRAFIC ASISTENTI ATI II - ${name} ${an}`;
 }
 
 export function graficPdfFileName(
