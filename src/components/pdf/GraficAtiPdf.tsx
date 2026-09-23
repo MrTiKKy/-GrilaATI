@@ -32,16 +32,21 @@ export type GraficPdfData = {
   footer?: GraficFooterTexts;
 };
 
-/** A4 landscape height (pt) */
+/** A4 landscape (pt) */
+const PAGE_W = 842;
 const PAGE_H = 595;
 const PAGE_PAD_TOP = 8;
 const PAGE_PAD_BOTTOM = 10;
+const PAGE_PAD_X = 10;
 const TITLE_BLOCK = 16;
 /** Spațiu pentru texte + ștampile sub tabel (ca pe formularul fizic) */
 const FOOTER_BLOCK = 52;
 const TABLE_GAP = 6;
 /** Rânduri goale înainte de MARCULESCU+DELEGAT */
 const EMPTY_BEFORE_DELEGAT = 1;
+const NAME_COL_RATIO = 0.15;
+/** Lățime medie caracter majuscul DejaVu Serif / fontSize */
+const NAME_CHAR_RATIO = 0.62;
 
 const FONT_FAMILY = "GraficSerif";
 
@@ -59,6 +64,11 @@ export function registerGraficPdfFonts(origin: string) {
       { src: `${base}/DejaVuSerif.ttf`, fontWeight: "normal", fontStyle: "normal" },
       { src: `${base}/DejaVuSerif-Bold.ttf`, fontWeight: "bold", fontStyle: "normal" },
       { src: `${base}/DejaVuSerif-Italic.ttf`, fontWeight: "normal", fontStyle: "italic" },
+      {
+        src: `${base}/DejaVuSerif-BoldItalic.ttf`,
+        fontWeight: "bold",
+        fontStyle: "italic",
+      },
     ],
   });
   fontsRegistered = true;
@@ -68,7 +78,7 @@ const styles = StyleSheet.create({
   page: {
     paddingTop: PAGE_PAD_TOP,
     paddingBottom: PAGE_PAD_BOTTOM,
-    paddingHorizontal: 10,
+    paddingHorizontal: PAGE_PAD_X,
     fontFamily: FONT_FAMILY,
     fontSize: 8,
     color: "#000",
@@ -98,7 +108,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
   },
   nameCell: {
-    width: "15%",
+    width: `${NAME_COL_RATIO * 100}%`,
     borderRightWidth: 1.1,
     borderBottomWidth: 1.1,
     borderColor: "#000",
@@ -107,7 +117,7 @@ const styles = StyleSheet.create({
   },
   nameText: {
     fontFamily: FONT_FAMILY,
-    fontWeight: "bold",
+    fontWeight: "normal",
     textTransform: "uppercase",
   },
   dayCell: {
@@ -133,16 +143,18 @@ const styles = StyleSheet.create({
   headerText: {
     fontFamily: FONT_FAMILY,
     fontWeight: "bold",
+    fontStyle: "italic",
     textAlign: "center",
   },
   abbrText: {
     fontFamily: FONT_FAMILY,
     fontWeight: "bold",
+    fontStyle: "italic",
     textAlign: "center",
   },
   cellText: {
     fontFamily: FONT_FAMILY,
-    fontWeight: "bold",
+    fontWeight: "normal",
     textAlign: "center",
   },
   delegatMerged: {
@@ -173,12 +185,21 @@ const styles = StyleSheet.create({
 });
 
 /** Fonturi PDF proporționale cu înălțimea rândului (evită overflow / pagină goală). */
-function fontsForRow(rowH: number) {
+function fontsForRow(rowH: number, nameFont: number) {
   const cell = Math.min(10.5, Math.max(7, rowH * 0.5 + 1));
-  const name = Math.min(9, Math.max(6.5, rowH * 0.44 + 1));
-  const header = Math.min(8, Math.max(5.5, rowH * 0.44));
-  const abbr = Math.min(7, Math.max(5, rowH * 0.38));
+  const name = Math.min(nameFont, Math.max(5, rowH * 0.85));
+  const header = Math.min(9.5, Math.max(6.5, rowH * 0.44 + 1.5));
+  const abbr = Math.min(8.5, Math.max(6, rowH * 0.38 + 1.5));
   return { cell, name, header, abbr };
+}
+
+/** Font nume astfel încât cel mai lung nume să încapă pe o linie. */
+function nameFontForLongest(names: string[]): number {
+  const maxLen = Math.max(1, ...names.map((n) => n.trim().length || 1));
+  const contentW = PAGE_W - PAGE_PAD_X * 2;
+  const nameColW = contentW * NAME_COL_RATIO - 4; // paddingHorizontal cell
+  const fitted = nameColW / (maxLen * NAME_CHAR_RATIO);
+  return Math.min(10, Math.max(5.5, fitted));
 }
 
 function chunkRows<T>(rows: T[], size: number): T[][] {
@@ -193,11 +214,13 @@ function chunkRows<T>(rows: T[], size: number): T[][] {
 function TableHeader({
   days,
   rowH,
+  nameFont,
 }: {
   days: GraficPdfDay[];
   rowH: number;
+  nameFont: number;
 }) {
-  const f = fontsForRow(rowH);
+  const f = fontsForRow(rowH, nameFont);
   return (
     <>
       <View style={[styles.row, { height: rowH }]}>
@@ -243,14 +266,16 @@ function StaffTableRows({
   days,
   rowOffset,
   rowH,
+  nameFont,
 }: {
   rows: GraficPdfRow[];
   days: GraficPdfDay[];
   rowOffset: number;
   rowH: number;
+  nameFont: number;
 }) {
   const dayCount = days.length;
-  const f = fontsForRow(rowH);
+  const f = fontsForRow(rowH, nameFont);
   return (
     <>
       {rows.map((row, idx) => (
@@ -333,11 +358,13 @@ function EmptyRows({
 function DelegatRow({
   footer,
   rowH,
+  nameFont,
 }: {
   footer: GraficFooterTexts;
   rowH: number;
+  nameFont: number;
 }) {
-  const f = fontsForRow(rowH);
+  const f = fontsForRow(rowH, nameFont);
   return (
     <View style={[styles.row, { height: rowH }]} wrap={false}>
       <View style={styles.nameCell}>
@@ -360,6 +387,10 @@ export function GraficAtiPdf({ data }: { data: GraficPdfData }) {
   const maxPerPage = 40;
   const pages = chunkRows(data.rows, maxPerPage);
   const totalPages = pages.length;
+  const nameFont = nameFontForLongest([
+    ...data.rows.map((r) => r.name),
+    footer.delegatName,
+  ]);
 
   return (
     <Document
@@ -401,12 +432,13 @@ export function GraficAtiPdf({ data }: { data: GraficPdfData }) {
             )}
 
             <View style={styles.table}>
-              <TableHeader days={data.days} rowH={h} />
+              <TableHeader days={data.days} rowH={h} nameFont={nameFont} />
               <StaffTableRows
                 rows={pageRows}
                 days={data.days}
                 rowOffset={pageIndex * maxPerPage}
                 rowH={h}
+                nameFont={nameFont}
               />
               {includeDelegatBlock && (
                 <>
@@ -415,7 +447,11 @@ export function GraficAtiPdf({ data }: { data: GraficPdfData }) {
                     days={data.days}
                     rowH={h}
                   />
-                  <DelegatRow footer={footer} rowH={h} />
+                  <DelegatRow
+                    footer={footer}
+                    rowH={h}
+                    nameFont={nameFont}
+                  />
                 </>
               )}
             </View>
