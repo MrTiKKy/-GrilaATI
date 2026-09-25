@@ -1,7 +1,7 @@
 /**
  * Seed / update user în Neon.
  * Usage:
- *   node --env-file=.env scripts/seed-user.mjs email@domeniu.ro 'ParolaTa'
+ *   node --env-file=.env.local scripts/seed-user.mjs email@domeniu.ro 'ParolaTa'
  */
 import { createHash } from "crypto";
 import { neon } from "@neondatabase/serverless";
@@ -11,7 +11,7 @@ const email = process.argv[2]?.trim().toLowerCase();
 const password = process.argv[3];
 
 if (!email || !password) {
-  console.error("Usage: node --env-file=.env scripts/seed-user.mjs <email> <password>");
+  console.error("Usage: node --env-file=.env.local scripts/seed-user.mjs <email> <password>");
   process.exit(1);
 }
 
