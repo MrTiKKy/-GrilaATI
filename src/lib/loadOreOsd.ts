@@ -9,11 +9,14 @@ import {
   type OreOsdRates,
 } from "@/lib/oreOsd";
 
-export async function loadOreOsdCells(): Promise<OreOsdCell[]> {
+export async function loadOreOsdCells(
+  workspaceId: string,
+): Promise<OreOsdCell[]> {
   const sql = getDb();
   const rows = await sql`
     SELECT post, zi, schimb, ore::float AS ore
     FROM ore_osd
+    WHERE workspace_id = ${workspaceId}::uuid
   `;
   const cells: OreOsdCell[] = [];
   for (const row of rows) {
@@ -30,6 +33,8 @@ export async function loadOreOsdCells(): Promise<OreOsdCell[]> {
   return mergeWithDefaults(cells);
 }
 
-export async function loadOreOsdRates(): Promise<OreOsdRates> {
-  return cellsToRates(await loadOreOsdCells());
+export async function loadOreOsdRates(
+  workspaceId: string,
+): Promise<OreOsdRates> {
+  return cellsToRates(await loadOreOsdCells(workspaceId));
 }

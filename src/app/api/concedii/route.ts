@@ -6,8 +6,9 @@ import { parseYear } from "@/lib/validate";
 import type { ConcediiResponse, ConcediuDto } from "@/lib/types";
 
 export async function GET(request: Request) {
-  const denied = await guardRead(request);
-  if (denied) return denied;
+  const gated = await guardRead(request);
+  if (gated instanceof NextResponse) return gated;
+  const { workspaceId } = gated;
 
   try {
     const { searchParams } = new URL(request.url);
@@ -29,11 +30,13 @@ export async function GET(request: Request) {
           SELECT COUNT(DISTINCT p.data)::int
           FROM programari p
           WHERE p.angajat_id = a.id
+            AND p.workspace_id = a.workspace_id
             AND p.valoare = 'CO'
             AND EXTRACT(YEAR FROM p.data) = ${an}
         ), 0) AS folosite
       FROM angajati a
-      WHERE a.activ = true
+      WHERE a.workspace_id = ${workspaceId}::uuid
+        AND a.activ = true
       ORDER BY a.ordine ASC, a.nume ASC
     `;
 

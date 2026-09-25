@@ -50,10 +50,6 @@ export default function ConturiPage() {
   const [newPassword, setNewPassword] = useState("");
   const [savingProfile, setSavingProfile] = useState(false);
 
-  const [newEmail, setNewEmail] = useState("");
-  const [newUserPassword, setNewUserPassword] = useState("");
-  const [creating, setCreating] = useState(false);
-
   const flash = useCallback((msg: string) => {
     setStatus(msg);
     window.setTimeout(() => setStatus(null), 2500);
@@ -124,31 +120,6 @@ export default function ConturiPage() {
     }
   }
 
-  async function createUser(e: FormEvent) {
-    e.preventDefault();
-    setCreating(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/conturi", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: newEmail.trim(),
-          password: newUserPassword,
-        }),
-      });
-      if (!res.ok) throw new Error(await readError(res));
-      setNewEmail("");
-      setNewUserPassword("");
-      flash("Cont creat");
-      await load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Creare eșuată");
-    } finally {
-      setCreating(false);
-    }
-  }
-
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });
     router.replace("/login");
@@ -168,7 +139,7 @@ export default function ConturiPage() {
                 Gestionare conturi
               </h1>
               <p className="mt-1 text-sm text-slate-500">
-                Schimbă emailul / parola ta sau creează conturi pentru colegi.
+                Schimbă emailul sau parola contului tău.
               </p>
             </div>
             <div className="flex shrink-0 flex-col gap-2 sm:items-end">
@@ -243,50 +214,17 @@ export default function ConturiPage() {
 
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/60 sm:p-6">
           <h2 className="text-sm font-semibold text-slate-800">
-            Creează cont nou
+            Conturi colegi
           </h2>
           <p className="mt-1 text-sm text-slate-500">
-            Pentru cineva care ți-a cerut acces la aplicație.
+            Crearea de conturi noi este dezactivată temporar. Invitațiile pe
+            workspace vor veni într-o versiune ulterioară.
           </p>
-          <form
-            onSubmit={(e) => void createUser(e)}
-            className="mt-4 space-y-3"
-          >
-            <label className="block text-xs font-medium tracking-wide text-slate-500 uppercase">
-              Email
-              <input
-                type="email"
-                required
-                value={newEmail}
-                onChange={(e) => setNewEmail(e.target.value)}
-                className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-400/20"
-              />
-            </label>
-            <label className="block text-xs font-medium tracking-wide text-slate-500 uppercase">
-              Parolă inițială
-              <input
-                type="password"
-                required
-                autoComplete="new-password"
-                value={newUserPassword}
-                onChange={(e) => setNewUserPassword(e.target.value)}
-                placeholder="Minim 8 caractere"
-                className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-400/20"
-              />
-            </label>
-            <button
-              type="submit"
-              disabled={creating || !newEmail || !newUserPassword}
-              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-800 transition-colors hover:border-sky-300 hover:bg-sky-50 hover:text-sky-800 disabled:opacity-50 sm:w-auto"
-            >
-              {creating ? "Se creează…" : "Creează cont"}
-            </button>
-          </form>
         </div>
 
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/60 sm:p-6">
           <h2 className="text-sm font-semibold text-slate-800">
-            Conturi existente
+            Contul tău
           </h2>
           <ul className="mt-3 divide-y divide-slate-100 rounded-xl border border-slate-200">
             {items.length === 0 && !loading ? (

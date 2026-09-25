@@ -10,8 +10,9 @@ import type { UpdateAngajatBody } from "@/lib/types";
 type Ctx = { params: Promise<{ id: string }> };
 
 export async function PATCH(request: Request, context: Ctx) {
-  const denied = await guardWrite(request);
-  if (denied) return denied;
+  const gated = await guardWrite(request);
+  if (gated instanceof NextResponse) return gated;
+  const { user, workspaceId } = gated;
 
   try {
     const { id: rawId } = await context.params;
@@ -36,7 +37,9 @@ export async function PATCH(request: Request, context: Ctx) {
     const updated = await sql`
       UPDATE angajati
       SET nume = ${nume}
-      WHERE id = ${id}::uuid AND activ = true
+      WHERE id = ${id}::uuid
+        AND workspace_id = ${workspaceId}::uuid
+        AND activ = true
       RETURNING id, nume
     `;
 
@@ -49,6 +52,8 @@ export async function PATCH(request: Request, context: Ctx) {
       resource: id,
       detail: { nume: String(updated[0].nume) },
       ip: clientKey(request),
+      userId: user.userId,
+      workspaceId,
     });
 
     return NextResponse.json({
@@ -64,8 +69,9 @@ export async function PATCH(request: Request, context: Ctx) {
 }
 
 export async function DELETE(request: Request, context: Ctx) {
-  const denied = await guardWrite(request);
-  if (denied) return denied;
+  const gated = await guardWrite(request);
+  if (gated instanceof NextResponse) return gated;
+  const { user, workspaceId } = gated;
 
   try {
     const { id: rawId } = await context.params;
@@ -78,7 +84,9 @@ export async function DELETE(request: Request, context: Ctx) {
     const updated = await sql`
       UPDATE angajati
       SET activ = false
-      WHERE id = ${id}::uuid AND activ = true
+      WHERE id = ${id}::uuid
+        AND workspace_id = ${workspaceId}::uuid
+        AND activ = true
       RETURNING id
     `;
 
@@ -90,6 +98,8 @@ export async function DELETE(request: Request, context: Ctx) {
       action: "angajat_delete",
       resource: id,
       ip: clientKey(request),
+      userId: user.userId,
+      workspaceId,
     });
 
     return NextResponse.json({ ok: true });

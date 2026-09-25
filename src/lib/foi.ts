@@ -9,52 +9,57 @@ export function parseFoaie(value: unknown): number | null {
 
 /** Asigură Sheet 1 și returnează lista sortată de foi. */
 export async function ensureLunaFoi(
+  workspaceId: string,
   an: number,
   luna: number,
   post: AngajatPost,
 ): Promise<number[]> {
   const sql = getDb();
   await sql`
-    INSERT INTO luna_foi (an, luna, post, foaie)
-    VALUES (${an}, ${luna}, ${post}, 1)
+    INSERT INTO luna_foi (workspace_id, an, luna, post, foaie)
+    VALUES (${workspaceId}::uuid, ${an}, ${luna}, ${post}, 1)
     ON CONFLICT DO NOTHING
   `;
   const rows = await sql`
     SELECT foaie
     FROM luna_foi
-    WHERE an = ${an} AND luna = ${luna} AND post = ${post}
+    WHERE workspace_id = ${workspaceId}::uuid
+      AND an = ${an} AND luna = ${luna} AND post = ${post}
     ORDER BY foaie ASC
   `;
   return rows.map((r) => Number(r.foaie));
 }
 
 export async function createNextFoaie(
+  workspaceId: string,
   an: number,
   luna: number,
   post: AngajatPost,
 ): Promise<{ foaie: number; foi: number[] }> {
   const sql = getDb();
-  await ensureLunaFoi(an, luna, post);
+  await ensureLunaFoi(workspaceId, an, luna, post);
   const maxRows = await sql`
     SELECT COALESCE(MAX(foaie), 0)::int AS max
     FROM luna_foi
-    WHERE an = ${an} AND luna = ${luna} AND post = ${post}
+    WHERE workspace_id = ${workspaceId}::uuid
+      AND an = ${an} AND luna = ${luna} AND post = ${post}
   `;
   const next = Number(maxRows[0]?.max ?? 0) + 1;
   if (next > 50) {
     throw new Error("Maxim 50 de foi pe lună");
   }
   await sql`
-    INSERT INTO luna_foi (an, luna, post, foaie)
-    VALUES (${an}, ${luna}, ${post}, ${next})
+    INSERT INTO luna_foi (workspace_id, an, luna, post, foaie)
+    VALUES (${workspaceId}::uuid, ${an}, ${luna}, ${post}, ${next})
     ON CONFLICT DO NOTHING
   `;
-  const foi = await ensureLunaFoi(an, luna, post);
+  const foi = await ensureLunaFoi(workspaceId, an, luna, post);
   return { foaie: next, foi };
 }
 
 /** Număr casuțe cu valoare sau secție pe foaia dată. */
 export async function countFoaieCells(
+  workspaceId: string,
   an: number,
   luna: number,
   post: AngajatPost,
@@ -67,8 +72,12 @@ export async function countFoaieCells(
   const rows = await sql`
     SELECT COUNT(*)::int AS n
     FROM programari p
-    INNER JOIN angajati a ON a.id = p.angajat_id AND a.activ = true
-    WHERE p.data >= ${start}::date
+    INNER JOIN angajati a
+      ON a.id = p.angajat_id
+      AND a.workspace_id = p.workspace_id
+      AND a.activ = true
+    WHERE p.workspace_id = ${workspaceId}::uuid
+      AND p.data >= ${start}::date
       AND p.data < ${end}::date
       AND p.foaie = ${foaie}
       AND COALESCE(a.post, 'asistent') = ${post}
@@ -81,13 +90,14 @@ export async function countFoaieCells(
 }
 
 export async function deleteFoaie(
+  workspaceId: string,
   an: number,
   luna: number,
   post: AngajatPost,
   foaie: number,
 ): Promise<{ foi: number[]; nextFoaie: number }> {
   const sql = getDb();
-  const foiBefore = await ensureLunaFoi(an, luna, post);
+  const foiBefore = await ensureLunaFoi(workspaceId, an, luna, post);
   if (!foiBefore.includes(foaie)) {
     throw new Error("Foaia nu există");
   }
@@ -103,6 +113,8 @@ export async function deleteFoaie(
     DELETE FROM programari p
     USING angajati a
     WHERE p.angajat_id = a.id
+      AND p.workspace_id = a.workspace_id
+      AND p.workspace_id = ${workspaceId}::uuid
       AND a.activ = true
       AND COALESCE(a.post, 'asistent') = ${post}
       AND p.foaie = ${foaie}
@@ -112,11 +124,11 @@ export async function deleteFoaie(
 
   await sql`
     DELETE FROM luna_foi
-    WHERE an = ${an} AND luna = ${luna} AND post = ${post} AND foaie = ${foaie}
+    WHERE workspace_id = ${workspaceId}::uuid
+      AND an = ${an} AND luna = ${luna} AND post = ${post} AND foaie = ${foaie}
   `;
 
-  const foi = await ensureLunaFoi(an, luna, post);
-  // Preferă foaia anterioară, altfel prima rămasă
+  const foi = await ensureLunaFoi(workspaceId, an, luna, post);
   const lower = foi.filter((n) => n < foaie);
   const nextFoaie =
     lower.length > 0 ? lower[lower.length - 1]! : (foi[0] ?? 1);

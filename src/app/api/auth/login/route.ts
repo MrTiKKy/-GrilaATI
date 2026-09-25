@@ -70,6 +70,7 @@ export async function POST(request: Request) {
       resource: user.id,
       ip,
       detail: { email: user.email },
+      userId: user.id,
     });
     return response;
   } catch (error) {

@@ -26,16 +26,20 @@ export async function writeAudit(params: {
   resource?: string | null;
   detail?: Record<string, unknown> | null;
   ip?: string | null;
+  userId?: string | null;
+  workspaceId?: string | null;
 }): Promise<void> {
   try {
     const sql = getDb();
     await sql`
-      INSERT INTO audit_log (action, resource, detail, ip)
+      INSERT INTO audit_log (action, resource, detail, ip, user_id, workspace_id)
       VALUES (
         ${params.action},
         ${params.resource ?? null},
         ${JSON.stringify(params.detail ?? {})}::jsonb,
-        ${params.ip ?? null}
+        ${params.ip ?? null},
+        ${params.userId ?? null}::uuid,
+        ${params.workspaceId ?? null}::uuid
       )
     `;
   } catch (error) {

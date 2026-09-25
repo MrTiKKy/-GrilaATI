@@ -20,8 +20,9 @@ import {
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 export async function PUT(request: Request) {
-  const denied = await guardWrite(request, { limit: 180 });
-  if (denied) return denied;
+  const gated = await guardWrite(request, { limit: 180 });
+  if (gated instanceof NextResponse) return gated;
+  const { user, workspaceId } = gated;
 
   try {
     const parsed = await readJsonLimited<UpsertProgramareBody>(request, 4_096);
@@ -42,6 +43,17 @@ export async function PUT(request: Request) {
     const foaie = parseFoaie(body.foaie ?? 1) ?? 1;
 
     const sql = getDb();
+
+    const angajatCheck = await sql`
+      SELECT id FROM angajati
+      WHERE id = ${angajatId}::uuid
+        AND workspace_id = ${workspaceId}::uuid
+        AND activ = true
+      LIMIT 1
+    `;
+    if (!angajatCheck[0]) {
+      return NextResponse.json({ error: "Angajat negăsit" }, { status: 404 });
+    }
 
     const valoareRaw =
       body.valoare === null || body.valoare === undefined || body.valoare === ""
@@ -82,6 +94,7 @@ export async function PUT(request: Request) {
       await sql`
         DELETE FROM programari
         WHERE angajat_id = ${angajatId}::uuid
+          AND workspace_id = ${workspaceId}::uuid
           AND data = ${body.data}::date
           AND foaie = ${foaie}
       `;
@@ -90,13 +103,16 @@ export async function PUT(request: Request) {
         resource: angajatId,
         detail: { data: body.data, foaie },
         ip: clientKey(request),
+        userId: user.userId,
+        workspaceId,
       });
       return NextResponse.json({ ok: true, deleted: true });
     }
 
     await sql`
-      INSERT INTO programari (angajat_id, data, valoare, ciorna, culoare, foaie)
+      INSERT INTO programari (workspace_id, angajat_id, data, valoare, ciorna, culoare, foaie)
       VALUES (
+        ${workspaceId}::uuid,
         ${angajatId}::uuid,
         ${body.data}::date,
         ${valoareRaw},
@@ -116,6 +132,8 @@ export async function PUT(request: Request) {
       resource: angajatId,
       detail: { data: body.data, valoare: valoareRaw, ciorna, culoare, foaie },
       ip: clientKey(request),
+      userId: user.userId,
+      workspaceId,
     });
 
     return NextResponse.json({

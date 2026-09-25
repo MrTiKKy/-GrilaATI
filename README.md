@@ -4,26 +4,30 @@ Programare lunară ATI/anestezie — Next.js App Router + Neon Postgres (`@neond
 
 ## Setup local
 
-1. Creează `.env` local (nu se commită) cu:
-   - `DATABASE_URL` — connection string Neon
-   - `SESSION_SECRET` — secret cookie (≥16 caractere; `openssl rand -hex 32`)
+1. Pentru dezvoltare pe branch Neon (recomandat):
+   - `.env` — baza principală (doar referință / SELECT)
+   - `.env.local` — `DATABASE_URL` = branch Neon + `SESSION_SECRET` (copiat din `.env`)
+   - Înainte de orice scriere SQL sau `npm run dev`: `node scripts/check-db-target.mjs`
 
-2. Rulează o dată în Neon SQL Editor (dacă lipseau):
-   - `sql/users.sql`
-   - `sql/grafice_finale.sql`
-   - `sql/add_ciorna.sql`
-   - `sql/audit_log.sql`
-
-3. Creează userul de login (parola e hashed în DB):
+2. Seed user **doar pe branch**:
 
 ```bash
-npm run seed:user -- emailul-tau@domeniu.ro 'ParolaTa'
+node --env-file=.env.local scripts/seed-user.mjs emailul-tau@domeniu.ro 'ParolaTa'
 ```
+
+3. Workspaces (multi-tenant) — pe branch Neon:
+
+```bash
+node --env-file=.env.local scripts/run-add-workspaces.mjs
+```
+
+Documentație: `sql/add_workspaces.sql`. Scripturile vechi din `sql/` (`ore_osd.sql`, `grafic_footer.sql`, `add_foi.sql`, etc.) sunt **istorice** și nu mai sunt compatibile cu cheile care includ `workspace_id`.
 
 4. Instalează și pornește:
 
 ```bash
 npm install
+node scripts/check-db-target.mjs
 npm run dev
 ```
 

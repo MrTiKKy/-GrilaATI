@@ -6,7 +6,18 @@ import {
   verifySessionToken,
   type SessionPayload,
 } from "@/lib/auth";
+import { getDb } from "@/lib/db";
 import { clientKey, rateLimit } from "@/lib/rateLimit";
+import {
+  getActiveWorkspace,
+  type WorkspaceRole,
+} from "@/lib/workspace";
+
+export type GuardContext = {
+  user: SessionPayload;
+  workspaceId: string;
+  rol: WorkspaceRole;
+};
 
 export async function requireSession(): Promise<NextResponse | null> {
   const jar = await cookies();
@@ -52,28 +63,79 @@ export function enforceRateLimit(
   return null;
 }
 
-/** Auth + rate limit pentru scrieri API */
+async function resolveGuardContext(
+  request: Request,
+  opts: { bucket: string; limit: number; windowMs: number; write: boolean },
+): Promise<GuardContext | NextResponse> {
+  const limited = enforceRateLimit(request, {
+    bucket: opts.bucket,
+    limit: opts.limit,
+    windowMs: opts.windowMs,
+  });
+  if (limited) return limited;
+
+  const session = await requireSessionUser();
+  if ("error" in session) return session.error;
+
+  const sql = getDb();
+  const rows = await sql`
+    SELECT activ
+    FROM users
+    WHERE id = ${session.user.userId}::uuid
+    LIMIT 1
+  `;
+  if (!rows[0] || !Boolean(rows[0].activ)) {
+    return NextResponse.json({ error: "Neautentificat" }, { status: 401 });
+  }
+
+  const ws = await getActiveWorkspace(session.user.userId);
+  if (!ws) {
+    return NextResponse.json(
+      { error: "Nu faci parte din niciun workspace" },
+      { status: 403 },
+    );
+  }
+
+  if (opts.write && ws.rol === "viewer") {
+    return NextResponse.json(
+      { error: "Nu ai drept de scriere în acest workspace" },
+      { status: 403 },
+    );
+  }
+
+  return {
+    user: session.user,
+    workspaceId: ws.workspaceId,
+    rol: ws.rol,
+  };
+}
+
+/** Auth + workspace + rate limit pentru scrieri API */
 export async function guardWrite(
   request: Request,
   opts?: { limit?: number; windowMs?: number },
-): Promise<NextResponse | null> {
-  const authError = await requireSession();
-  if (authError) return authError;
-  return enforceRateLimit(request, {
+): Promise<GuardContext | NextResponse> {
+  return resolveGuardContext(request, {
     bucket: "write",
     limit: opts?.limit ?? 90,
     windowMs: opts?.windowMs ?? 60_000,
+    write: true,
   });
 }
 
 export async function guardRead(
   request: Request,
-): Promise<NextResponse | null> {
-  const authError = await requireSession();
-  if (authError) return authError;
-  return enforceRateLimit(request, {
+): Promise<GuardContext | NextResponse> {
+  return resolveGuardContext(request, {
     bucket: "read",
     limit: 180,
     windowMs: 60_000,
+    write: false,
   });
+}
+
+export function isGuardError(
+  value: GuardContext | NextResponse,
+): value is NextResponse {
+  return value instanceof NextResponse;
 }

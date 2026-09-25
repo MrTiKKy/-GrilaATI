@@ -12,10 +12,10 @@ export type GraficFooterTexts = {
 };
 
 export const GRAFIC_FOOTER_DEFAULTS: GraficFooterTexts = {
-  delegatName: "MARCULESCU",
-  delegatLabel: "DELEGAT",
-  medicSef: "*MEDIC SEF: DR SUSANU CAROLIN*",
-  asSef: "AS SEF POPA NICOLETA",
+  delegatName: "",
+  delegatLabel: "",
+  medicSef: "",
+  asSef: "",
 };
 
 export const GRAFIC_FOOTER_FIELDS: Array<{

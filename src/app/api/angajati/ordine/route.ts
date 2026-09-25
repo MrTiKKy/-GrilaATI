@@ -8,8 +8,9 @@ import { parseUuidList } from "@/lib/validate";
 import type { OrdineBody } from "@/lib/types";
 
 export async function PUT(request: Request) {
-  const denied = await guardWrite(request);
-  if (denied) return denied;
+  const gated = await guardWrite(request);
+  if (gated instanceof NextResponse) return gated;
+  const { user, workspaceId } = gated;
 
   try {
     const parsed = await readJsonLimited<OrdineBody>(request, 32_768);
@@ -25,11 +26,29 @@ export async function PUT(request: Request) {
 
     const sql = getDb();
 
+    const owned = await sql`
+      SELECT id::text FROM angajati
+      WHERE workspace_id = ${workspaceId}::uuid
+        AND activ = true
+        AND id = ANY(${ids}::uuid[])
+    `;
+    const ownedSet = new Set(owned.map((r) => String(r.id)));
+    for (const id of ids) {
+      if (!ownedSet.has(id)) {
+        return NextResponse.json(
+          { error: "Unul sau mai mulți angajați nu aparțin workspace-ului" },
+          { status: 400 },
+        );
+      }
+    }
+
     for (let i = 0; i < ids.length; i++) {
       await sql`
         UPDATE angajati
         SET ordine = ${i + 1}
-        WHERE id = ${ids[i]}::uuid AND activ = true
+        WHERE id = ${ids[i]}::uuid
+          AND workspace_id = ${workspaceId}::uuid
+          AND activ = true
       `;
     }
 
@@ -37,6 +56,8 @@ export async function PUT(request: Request) {
       action: "angajat_ordine",
       detail: { count: ids.length },
       ip: clientKey(request),
+      userId: user.userId,
+      workspaceId,
     });
 
     return NextResponse.json({ ok: true });

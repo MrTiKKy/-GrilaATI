@@ -11,11 +11,12 @@ import { clientKey } from "@/lib/rateLimit";
 import { readJsonLimited } from "@/lib/readJsonLimited";
 
 export async function GET(request: Request) {
-  const denied = await guardRead(request);
-  if (denied) return denied;
+  const gated = await guardRead(request);
+  if (gated instanceof NextResponse) return gated;
+  const { workspaceId } = gated;
 
   try {
-    const footer = await loadGraficFooter();
+    const footer = await loadGraficFooter(workspaceId);
     return NextResponse.json({ footer });
   } catch (error) {
     console.error("GET /api/grafic-footer", error);
@@ -27,8 +28,9 @@ export async function GET(request: Request) {
 }
 
 export async function PUT(request: Request) {
-  const denied = await guardWrite(request);
-  if (denied) return denied;
+  const gated = await guardWrite(request);
+  if (gated instanceof NextResponse) return gated;
+  const { user, workspaceId } = gated;
 
   try {
     const parsed = await readJsonLimited<{
@@ -52,9 +54,9 @@ export async function PUT(request: Request) {
 
     const sql = getDb();
     await sql`
-      INSERT INTO grafic_footer (key, value, updated_at)
-      VALUES (${key}, ${value}, now())
-      ON CONFLICT (key)
+      INSERT INTO grafic_footer (workspace_id, key, value, updated_at)
+      VALUES (${workspaceId}::uuid, ${key}, ${value}, now())
+      ON CONFLICT (workspace_id, key)
       DO UPDATE SET value = EXCLUDED.value, updated_at = now()
     `;
 
@@ -62,9 +64,11 @@ export async function PUT(request: Request) {
       action: "grafic_footer_update",
       detail: { key, value },
       ip: clientKey(request),
+      userId: user.userId,
+      workspaceId,
     });
 
-    const footer: GraficFooterTexts = await loadGraficFooter();
+    const footer: GraficFooterTexts = await loadGraficFooter(workspaceId);
     return NextResponse.json({ footer });
   } catch (error) {
     console.error("PUT /api/grafic-footer", error);

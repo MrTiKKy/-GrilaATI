@@ -8,7 +8,7 @@
     "build": "next build",
     "start": "next start --hostname 127.0.0.1 --port 3000",
     "lint": "eslint",
-    "seed:user": "node --env-file=.env scripts/seed-user.mjs"
+    "seed:user": "node --env-file=.env.local scripts/seed-user.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

@@ -17,8 +17,9 @@ import type {
 } from "@/lib/types";
 
 export async function GET(request: Request) {
-  const denied = await guardRead(request);
-  if (denied) return denied;
+  const gated = await guardRead(request);
+  if (gated instanceof NextResponse) return gated;
+  const { workspaceId } = gated;
 
   try {
     const { searchParams } = new URL(request.url);
@@ -37,7 +38,8 @@ export async function GET(request: Request) {
       rows = await sql`
         SELECT id, an, luna, titlu, created_at
         FROM grafice_finale
-        WHERE an = ${an} AND luna = ${luna}
+        WHERE workspace_id = ${workspaceId}::uuid
+          AND an = ${an} AND luna = ${luna}
         ORDER BY created_at DESC
       `;
     } else if (anParam) {
@@ -48,13 +50,15 @@ export async function GET(request: Request) {
       rows = await sql`
         SELECT id, an, luna, titlu, created_at
         FROM grafice_finale
-        WHERE an = ${an}
+        WHERE workspace_id = ${workspaceId}::uuid
+          AND an = ${an}
         ORDER BY luna DESC, created_at DESC
       `;
     } else {
       rows = await sql`
         SELECT id, an, luna, titlu, created_at
         FROM grafice_finale
+        WHERE workspace_id = ${workspaceId}::uuid
         ORDER BY an DESC, luna DESC, created_at DESC
         LIMIT 200
       `;
@@ -85,8 +89,9 @@ export async function GET(request: Request) {
 
 /** Salvează snapshot construit pe server din DB (nu din body client). */
 export async function POST(request: Request) {
-  const denied = await guardWrite(request, { limit: 20, windowMs: 60_000 });
-  if (denied) return denied;
+  const gated = await guardWrite(request, { limit: 20, windowMs: 60_000 });
+  if (gated instanceof NextResponse) return gated;
+  const { user, workspaceId } = gated;
 
   try {
     const parsed = await readJsonLimited<CreateGraficBody>(request, 4_096);
@@ -111,14 +116,14 @@ export async function POST(request: Request) {
         ? foaieRaw
         : 1;
 
-    const snapshot = await buildGraficSnapshotFromDb(an, luna, post, foaie);
+    const snapshot = await buildGraficSnapshotFromDb(workspaceId, an, luna, post, foaie);
     const titluBase = buildMonthTitle(an, luna, post);
     const titlu = foaie > 1 ? `${titluBase} · Sheet ${foaie}` : titluBase;
 
     const sql = getDb();
     const inserted = await sql`
-      INSERT INTO grafice_finale (an, luna, titlu, snapshot)
-      VALUES (${an}, ${luna}, ${titlu}, ${JSON.stringify(snapshot)}::jsonb)
+      INSERT INTO grafice_finale (workspace_id, an, luna, titlu, snapshot)
+      VALUES (${workspaceId}::uuid, ${an}, ${luna}, ${titlu}, ${JSON.stringify(snapshot)}::jsonb)
       RETURNING id, an, luna, titlu, created_at
     `;
 
@@ -132,6 +137,8 @@ export async function POST(request: Request) {
       resource: String(row.id),
       detail: { an, luna, post, foaie, rows: snapshot.rows.length },
       ip: clientKey(request),
+      userId: user.userId,
+      workspaceId,
     });
 
     return NextResponse.json(

@@ -9,8 +9,9 @@ import { clampString } from "@/lib/validate";
 import type { CreateAngajatBody, CreateAngajatResponse } from "@/lib/types";
 
 export async function POST(request: Request) {
-  const denied = await guardWrite(request);
-  if (denied) return denied;
+  const gated = await guardWrite(request);
+  if (gated instanceof NextResponse) return gated;
+  const { user, workspaceId } = gated;
 
   try {
     const parsed = await readJsonLimited<CreateAngajatBody>(request, 4_096);
@@ -40,13 +41,14 @@ export async function POST(request: Request) {
     const maxRows = await sql`
       SELECT COALESCE(MAX(ordine), 0)::int AS max_ordine
       FROM angajati
-      WHERE activ = true
+      WHERE workspace_id = ${workspaceId}::uuid
+        AND activ = true
     `;
     const ordine = Number(maxRows[0]?.max_ordine ?? 0) + 1;
 
     const inserted = await sql`
-      INSERT INTO angajati (nume, zile_co_an, ordine, activ, post)
-      VALUES (${numeNorm}, ${zileCoAn}, ${ordine}, true, ${post})
+      INSERT INTO angajati (workspace_id, nume, zile_co_an, ordine, activ, post)
+      VALUES (${workspaceId}::uuid, ${numeNorm}, ${zileCoAn}, ${ordine}, true, ${post})
       RETURNING id, nume, zile_co_an, ordine, post
     `;
 
@@ -60,6 +62,8 @@ export async function POST(request: Request) {
       resource: String(row.id),
       detail: { nume: String(row.nume), zileCoAn, post },
       ip: clientKey(request),
+      userId: user.userId,
+      workspaceId,
     });
 
     const postRaw = String(row.post ?? post);

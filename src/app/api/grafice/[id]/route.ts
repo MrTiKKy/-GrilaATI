@@ -9,8 +9,9 @@ import type { GraficFinalDetail, GraficSnapshot } from "@/lib/types";
 type Ctx = { params: Promise<{ id: string }> };
 
 export async function GET(request: Request, context: Ctx) {
-  const denied = await guardRead(request);
-  if (denied) return denied;
+  const gated = await guardRead(request);
+  if (gated instanceof NextResponse) return gated;
+  const { workspaceId } = gated;
 
   try {
     const { id: rawId } = await context.params;
@@ -24,6 +25,7 @@ export async function GET(request: Request, context: Ctx) {
       SELECT id, an, luna, titlu, snapshot, created_at
       FROM grafice_finale
       WHERE id = ${id}::uuid
+        AND workspace_id = ${workspaceId}::uuid
       LIMIT 1
     `;
 
@@ -60,8 +62,9 @@ export async function GET(request: Request, context: Ctx) {
 }
 
 export async function DELETE(request: Request, context: Ctx) {
-  const denied = await guardWrite(request);
-  if (denied) return denied;
+  const gated = await guardWrite(request);
+  if (gated instanceof NextResponse) return gated;
+  const { user, workspaceId } = gated;
 
   try {
     const { id: rawId } = await context.params;
@@ -74,6 +77,7 @@ export async function DELETE(request: Request, context: Ctx) {
     const deleted = await sql`
       DELETE FROM grafice_finale
       WHERE id = ${id}::uuid
+        AND workspace_id = ${workspaceId}::uuid
       RETURNING id, an, luna
     `;
 
@@ -89,6 +93,8 @@ export async function DELETE(request: Request, context: Ctx) {
         luna: Number(deleted[0].luna),
       },
       ip: clientKey(request),
+      userId: user.userId,
+      workspaceId,
     });
 
     return NextResponse.json({ ok: true });

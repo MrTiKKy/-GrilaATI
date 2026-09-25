@@ -24,8 +24,9 @@ function resolvePost(data: {
 
 /** Creează Sheet N+1 (tabel gol) pentru luna/post. */
 export async function POST(request: Request) {
-  const denied = await guardWrite(request, { limit: 30 });
-  if (denied) return denied;
+  const gated = await guardWrite(request, { limit: 30 });
+  if (gated instanceof NextResponse) return gated;
+  const { user, workspaceId } = gated;
 
   try {
     const parsed = await readJsonLimited<{
@@ -43,12 +44,14 @@ export async function POST(request: Request) {
     }
 
     const post = resolvePost(parsed.data);
-    const { foaie, foi } = await createNextFoaie(an, luna, post);
+    const { foaie, foi } = await createNextFoaie(workspaceId, an, luna, post);
 
     await writeAudit({
       action: "foaie_create",
       detail: { an, luna, post, foaie },
       ip: clientKey(request),
+      userId: user.userId,
+      workspaceId,
     });
 
     return NextResponse.json({ foaie, foi });
@@ -69,8 +72,9 @@ export async function POST(request: Request) {
  * Body: { an, luna, post?, foaie, confirm?: boolean }
  */
 export async function DELETE(request: Request) {
-  const denied = await guardWrite(request, { limit: 30 });
-  if (denied) return denied;
+  const gated = await guardWrite(request, { limit: 30 });
+  if (gated instanceof NextResponse) return gated;
+  const { user, workspaceId } = gated;
 
   try {
     const parsed = await readJsonLimited<{
@@ -94,7 +98,7 @@ export async function DELETE(request: Request) {
     }
 
     const post = resolvePost(parsed.data);
-    const filled = await countFoaieCells(an, luna, post, foaie);
+    const filled = await countFoaieCells(workspaceId, an, luna, post, foaie);
     const confirmed = parsed.data.confirm === true;
 
     if (filled > 0 && !confirmed) {
@@ -108,12 +112,14 @@ export async function DELETE(request: Request) {
       );
     }
 
-    const { foi, nextFoaie } = await deleteFoaie(an, luna, post, foaie);
+    const { foi, nextFoaie } = await deleteFoaie(workspaceId, an, luna, post, foaie);
 
     await writeAudit({
       action: "foaie_delete",
       detail: { an, luna, post, foaie, filled, confirmed },
       ip: clientKey(request),
+      userId: user.userId,
+      workspaceId,
     });
 
     return NextResponse.json({ ok: true, foi, nextFoaie, filled });

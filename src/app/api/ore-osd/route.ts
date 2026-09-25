@@ -13,11 +13,12 @@ import { clientKey } from "@/lib/rateLimit";
 import { readJsonLimited } from "@/lib/readJsonLimited";
 
 export async function GET(request: Request) {
-  const denied = await guardRead(request);
-  if (denied) return denied;
+  const gated = await guardRead(request);
+  if (gated instanceof NextResponse) return gated;
+  const { workspaceId } = gated;
 
   try {
-    const items = await loadOreOsdCells();
+    const items = await loadOreOsdCells(workspaceId);
     return NextResponse.json({ items });
   } catch (error) {
     console.error("GET /api/ore-osd", error);
@@ -30,8 +31,9 @@ export async function GET(request: Request) {
 }
 
 export async function PUT(request: Request) {
-  const denied = await guardWrite(request);
-  if (denied) return denied;
+  const gated = await guardWrite(request);
+  if (gated instanceof NextResponse) return gated;
+  const { user, workspaceId } = gated;
 
   try {
     const parsed = await readJsonLimited<{
@@ -52,7 +54,6 @@ export async function PUT(request: Request) {
       );
     }
 
-    // Vineri: doar 1/3 e editabil
     if (zi === "V" && schimb !== "1/3") {
       return NextResponse.json(
         { error: "Pe vineri doar schimbul 1/3 are ore" },
@@ -67,14 +68,13 @@ export async function PUT(request: Request) {
         { status: 400 },
       );
     }
-    // Păstrăm maxim o zecimală
     const ore = Math.round(oreRaw * 10) / 10;
 
     const sql = getDb();
     await sql`
-      INSERT INTO ore_osd (post, zi, schimb, ore, updated_at)
-      VALUES (${post}, ${zi}, ${schimb}, ${ore}, now())
-      ON CONFLICT (post, zi, schimb)
+      INSERT INTO ore_osd (workspace_id, post, zi, schimb, ore, updated_at)
+      VALUES (${workspaceId}::uuid, ${post}, ${zi}, ${schimb}, ${ore}, now())
+      ON CONFLICT (workspace_id, post, zi, schimb)
       DO UPDATE SET ore = EXCLUDED.ore, updated_at = now()
     `;
 
@@ -82,6 +82,8 @@ export async function PUT(request: Request) {
       action: "ore_osd_update",
       detail: { post, zi, schimb, ore },
       ip: clientKey(request),
+      userId: user.userId,
+      workspaceId,
     });
 
     const item: OreOsdCell = { post, zi, schimb, ore };

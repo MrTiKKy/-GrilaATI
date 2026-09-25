@@ -11,6 +11,7 @@ export { buildGraficTitle as buildMonthTitle };
 
 /** Construiește snapshot PDF din DB (sursă de adevăr) — fără date din browser. */
 export async function buildGraficSnapshotFromDb(
+  workspaceId: string,
   an: number,
   luna: number,
   post: AngajatPost = "asistent",
@@ -22,8 +23,8 @@ export async function buildGraficSnapshotFromDb(
   const end = endDate.toISOString().slice(0, 10);
   const daysInMonth = new Date(an, luna, 0).getDate();
   const [osdRates, footer] = await Promise.all([
-    loadOreOsdRates(),
-    loadGraficFooter(),
+    loadOreOsdRates(workspaceId),
+    loadGraficFooter(workspaceId),
   ]);
 
   const days = Array.from({ length: daysInMonth }, (_, i) => {
@@ -41,7 +42,8 @@ export async function buildGraficSnapshotFromDb(
   const angajatiRows = await sql`
     SELECT a.id, a.nume, a.post
     FROM angajati a
-    WHERE a.activ = true
+    WHERE a.workspace_id = ${workspaceId}::uuid
+      AND a.activ = true
       AND COALESCE(a.post, 'asistent') = ${post}
     ORDER BY a.ordine ASC, a.nume ASC
   `;
@@ -49,8 +51,12 @@ export async function buildGraficSnapshotFromDb(
   const programariRows = await sql`
     SELECT p.angajat_id, p.data::text AS data, p.valoare
     FROM programari p
-    INNER JOIN angajati a ON a.id = p.angajat_id AND a.activ = true
-    WHERE p.data >= ${start}::date
+    INNER JOIN angajati a
+      ON a.id = p.angajat_id
+      AND a.workspace_id = p.workspace_id
+      AND a.activ = true
+    WHERE p.workspace_id = ${workspaceId}::uuid
+      AND p.data >= ${start}::date
       AND p.data < ${end}::date
       AND COALESCE(a.post, 'asistent') = ${post}
       AND p.foaie = ${foaie}
