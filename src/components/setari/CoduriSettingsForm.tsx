@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
 // ---------------------------------------------------------------------------
@@ -269,8 +270,12 @@ export function CoduriSettingsForm() {
           (CO, CM, CIC) nu pot fi redenumite sau dezactivate.
         </p>
 
-        <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
-          Codurile noi nu adaugă ore până la Faza 4.
+        <p className="mt-3 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900">
+          Ore pe V/S/D se configurează în{" "}
+          <Link href="/setari/ore" className="font-semibold underline">
+            Setări → Ore
+          </Link>
+          .
         </p>
 
         <div className="mt-4 flex flex-wrap items-center gap-3 text-xs">
@@ -511,7 +516,11 @@ export function CoduriSettingsForm() {
         <div className="mt-8 rounded-xl border border-dashed border-slate-300 bg-slate-50/80 p-4">
           <h2 className="text-sm font-semibold text-slate-800">Cod nou</h2>
           <p className="mt-0.5 text-xs text-slate-500">
-            Codurile noi nu adaugă ore pe weekend/O.SD până la Faza 4.
+            După creare, setează orele în{" "}
+            <Link href="/setari/ore" className="font-medium text-sky-700 underline">
+              Setări → Ore
+            </Link>{" "}
+            (implicit 0).
           </p>
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
             <label className="block text-xs font-medium tracking-wide text-slate-500 uppercase">

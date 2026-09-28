@@ -1,14 +1,13 @@
 import { getDb } from "@/lib/db";
 import { loadGraficFooter } from "@/lib/loadGraficFooter";
-import { loadOreOsdRatesForCategorie } from "@/lib/loadOreOsd";
 import {
   buildGraficTitleFromCategorie,
   getCategorie,
 } from "@/lib/categorii";
 import {
-  comportamentMapFromCoduri,
-  listCoduriForCategorie,
-} from "@/lib/coduri";
+  listOreCoduriForCategorie,
+  rowsToByCod,
+} from "@/lib/oreCoduri";
 import { toDateString, type GraficSnapshot } from "@/lib/types";
 import { orePentruCasuta } from "@/lib/weekendOre";
 
@@ -34,12 +33,11 @@ export async function buildGraficSnapshotFromDb(
   const endDate = new Date(Date.UTC(an, luna, 1));
   const end = endDate.toISOString().slice(0, 10);
   const daysInMonth = new Date(an, luna, 0).getDate();
-  const [osdRates, footer, coduri] = await Promise.all([
-    loadOreOsdRatesForCategorie(workspaceId, categorieId),
+  const [oreRows, footer] = await Promise.all([
+    listOreCoduriForCategorie(workspaceId, categorieId, { onlyActive: false }),
     loadGraficFooter(workspaceId),
-    listCoduriForCategorie(workspaceId, categorieId, { onlyActive: false }),
   ]);
-  const comportamentMap = comportamentMapFromCoduri(coduri);
+  const ratesByCod = rowsToByCod(oreRows);
 
   const days = Array.from({ length: daysInMonth }, (_, i) => {
     const day = i + 1;
@@ -94,13 +92,7 @@ export async function buildGraficSnapshotFromDb(
       const cells = days.map((d) => byStaffDay.get(`${id}|${d.date}`) ?? "");
       let osd = 0;
       for (let i = 0; i < days.length; i++) {
-        osd += orePentruCasuta(
-          categorieId,
-          days[i].abbr,
-          cells[i],
-          osdRates,
-          comportamentMap,
-        );
+        osd += orePentruCasuta(days[i].abbr, cells[i], ratesByCod);
       }
       return {
         name: String(row.nume).toUpperCase(),

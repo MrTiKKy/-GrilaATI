@@ -59,13 +59,8 @@ import {
   type GraficFooterTexts,
 } from "@/lib/graficFooter";
 import { EditableFooterText } from "./EditableFooterText";
-import { totalOsdOre } from "@/lib/weekendOre";
-import {
-  cellsToRates,
-  mergeWithDefaultsForCategorie,
-  type OreOsdCell,
-  type OreOsdRates,
-} from "@/lib/oreOsd";
+import { totalOsdOre, osdBreakdown } from "@/lib/weekendOre";
+import type { OreCoduriByCod } from "@/lib/oreCoduri";
 
 const DAY_ABBR = ["D", "L", "Ma", "Mi", "J", "V", "S"] as const;
 
@@ -930,14 +925,11 @@ export function ScheduleGrid({
     ? staff.find((s) => s.id === draggingId)
     : null;
 
-  const [osdRates, setOsdRates] = useState<OreOsdRates>({});
+  const [oreByCod, setOreByCod] = useState<OreCoduriByCod>({});
   const [cellOptions, setCellOptions] = useState<
     Array<{ value: string; label: string; culoare?: string }>
   >([]);
   const [permiteTextLiber, setPermiteTextLiber] = useState(false);
-  const [comportamentMap, setComportamentMap] = useState<
-    Record<string, string>
-  >({});
   const [culoareByCod, setCuloareByCod] = useState<Record<string, string>>(
     {},
   );
@@ -946,21 +938,17 @@ export function ScheduleGrid({
     if (typeof categorieId !== "string") return;
     const cid = categorieId;
     let cancelled = false;
-    async function loadRates() {
+    async function loadOre() {
       try {
         const res = await fetch(
-          `/api/ore-osd?categorie=${encodeURIComponent(cid)}`,
+          `/api/ore-coduri?categorie=${encodeURIComponent(cid)}`,
         );
         if (!res.ok) return;
-        const data = (await res.json()) as { items: OreOsdCell[] };
+        const data = (await res.json()) as { byCod?: OreCoduriByCod };
         if (cancelled) return;
-        const merged = mergeWithDefaultsForCategorie(
-          cid,
-          data.items ?? [],
-        );
-        setOsdRates(cellsToRates(merged));
+        setOreByCod(data.byCod ?? {});
       } catch {
-        /* păstrează defaults */
+        /* păstrează */
       }
     }
     async function loadCoduri() {
@@ -974,11 +962,9 @@ export function ScheduleGrid({
             cod: string;
             eticheta: string;
             culoare: string;
-            comportamentVechi: string | null;
           }>;
           permiteTextLiber: boolean;
           culoareByCod?: Record<string, string>;
-          comportamentMap?: Record<string, string>;
         };
         if (cancelled) return;
         setCellOptions(
@@ -998,20 +984,11 @@ export function ScheduleGrid({
           }
           setCuloareByCod(colors);
         }
-        if (data.comportamentMap) {
-          setComportamentMap(data.comportamentMap);
-        } else {
-          const map: Record<string, string> = {};
-          for (const c of data.items ?? []) {
-            map[c.cod] = c.comportamentVechi || c.cod;
-          }
-          setComportamentMap(map);
-        }
       } catch {
         /* keep previous */
       }
     }
-    void loadRates();
+    void loadOre();
     void loadCoduri();
     return () => {
       cancelled = true;
@@ -1047,17 +1024,18 @@ export function ScheduleGrid({
     for (const person of staff) {
       map.set(
         person.id,
-        totalOsdOre(
-          categorieId ?? person.categorieId,
-          osdDays,
-          grid[person.id] ?? {},
-          osdRates,
-          comportamentMap,
-        ),
+        totalOsdOre(osdDays, grid[person.id] ?? {}, oreByCod),
       );
     }
     return map;
-  }, [staff, osdDays, grid, osdRates, categorieId, comportamentMap]);
+  }, [staff, osdDays, grid, oreByCod]);
+
+  const osdBreakdownRows = useMemo(() => {
+    return staff.map((person) => {
+      const b = osdBreakdown(osdDays, grid[person.id] ?? {}, oreByCod);
+      return { id: person.id, name: person.name, ...b };
+    });
+  }, [staff, osdDays, grid, oreByCod]);
 
   const titleMonth = monthLabel(year, monthIndex);
 
@@ -1444,6 +1422,85 @@ export function ScheduleGrid({
             + Adaugă angajat
           </button>
         </div>
+
+        <section className="mt-5 overflow-hidden rounded-xl border border-slate-200 bg-white">
+          <div className="border-b border-slate-100 px-3 py-2.5 sm:px-4">
+            <h2 className="text-sm font-semibold text-slate-800">O.SD</h2>
+            <p className="text-xs text-slate-500">
+              Total ore Vineri / Sâmbătă / Duminică pe angajat — luna și foaia
+              curentă.
+            </p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[28rem] border-collapse text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 bg-slate-50 text-xs font-semibold tracking-wide text-slate-500 uppercase">
+                  <th className="px-3 py-2 text-left sm:px-4">Angajat</th>
+                  <th className="px-2 py-2 text-right tabular-nums">V</th>
+                  <th className="px-2 py-2 text-right tabular-nums">S</th>
+                  <th className="px-2 py-2 text-right tabular-nums">D</th>
+                  <th className="px-3 py-2 text-right tabular-nums sm:px-4">
+                    Total
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {osdBreakdownRows.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={5}
+                      className="px-4 py-6 text-center text-sm text-slate-500"
+                    >
+                      Niciun angajat pe această grilă.
+                    </td>
+                  </tr>
+                ) : (
+                  osdBreakdownRows.map((row) => (
+                    <tr
+                      key={row.id}
+                      className="border-b border-slate-100 last:border-0"
+                    >
+                      <td className="px-3 py-2 font-medium text-slate-800 sm:px-4">
+                        {row.name}
+                      </td>
+                      <td className="px-2 py-2 text-right tabular-nums text-slate-700">
+                        {row.v || "—"}
+                      </td>
+                      <td className="px-2 py-2 text-right tabular-nums text-slate-700">
+                        {row.s || "—"}
+                      </td>
+                      <td className="px-2 py-2 text-right tabular-nums text-slate-700">
+                        {row.d || "—"}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums font-semibold text-slate-900 sm:px-4">
+                        {row.total || "—"}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+              {osdBreakdownRows.length > 0 && (
+                <tfoot>
+                  <tr className="bg-slate-50 text-sm font-semibold">
+                    <td className="px-3 py-2 sm:px-4">Total</td>
+                    <td className="px-2 py-2 text-right tabular-nums">
+                      {osdBreakdownRows.reduce((s, r) => s + r.v, 0) || "—"}
+                    </td>
+                    <td className="px-2 py-2 text-right tabular-nums">
+                      {osdBreakdownRows.reduce((s, r) => s + r.s, 0) || "—"}
+                    </td>
+                    <td className="px-2 py-2 text-right tabular-nums">
+                      {osdBreakdownRows.reduce((s, r) => s + r.d, 0) || "—"}
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums sm:px-4">
+                      {osdBreakdownRows.reduce((s, r) => s + r.total, 0) || "—"}
+                    </td>
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+          </div>
+        </section>
 
         <footer className="mt-5 space-y-3 border-t border-slate-100 pt-4">
           <p className="text-[10px] font-medium tracking-wide text-slate-400 uppercase">
