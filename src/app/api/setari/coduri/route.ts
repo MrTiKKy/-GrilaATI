@@ -189,6 +189,9 @@ export async function POST(request: Request) {
     `;
     const newId = String(inserted[0]?.id ?? "");
 
+    const { seedOreCoduriForNewCod } = await import("@/lib/oreCoduri");
+    await seedOreCoduriForNewCod(workspaceId, newId, categorieId);
+
     await writeAudit({
       action: "cod_create",
       resource: newId,

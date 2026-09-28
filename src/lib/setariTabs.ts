@@ -33,9 +33,9 @@ export const SETARI_TABS: readonly SetariTab[] = [
   },
   {
     id: "ore-pe-zile",
-    label: "Ore pe zile",
-    href: "/setari/ore-pe-zile",
-    enabled: false,
+    label: "Ore",
+    href: "/setari/ore",
+    enabled: true,
   },
   { id: "foi", label: "Foi", href: "/setari/foi", enabled: false },
   {

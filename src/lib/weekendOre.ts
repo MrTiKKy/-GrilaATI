@@ -1,71 +1,56 @@
-import {
-  cellsToRates,
-  oreOsdKey,
-  type OreOsdRates,
-  ORE_OSD_DEFAULT_TEMPLATE,
-} from "@/lib/oreOsd";
-
-const FALLBACK_RATES: OreOsdRates = Object.fromEntries(
-  ORE_OSD_DEFAULT_TEMPLATE.map((d) => [
-    oreOsdKey("__default__", d.zi, d.schimb),
-    d.ore,
-  ]),
-);
+import type { OreCoduriByCod } from "@/lib/oreCoduri";
 
 export function isWeekendOsdDay(abbr: string): abbr is "V" | "S" | "D" {
   return abbr === "V" || abbr === "S" || abbr === "D";
 }
 
-/** Ore pentru o casuță pe V/S/D; altceva → 0 */
+/**
+ * Ore O.SD pentru o casuță: citește din tabelul ore_coduri (via mapă pe textul codului).
+ * Text liber / cod necunoscut → 0.
+ */
 export function orePentruCasuta(
-  categorieId: string,
   dayAbbr: string,
   valoare: string,
-  rates: OreOsdRates,
-  comportamentMap?: Record<string, string>,
+  ratesByCod: OreCoduriByCod,
 ): number {
   if (!isWeekendOsdDay(dayAbbr)) return 0;
   if (!valoare) return 0;
-  const lookup =
-    comportamentMap && Object.keys(comportamentMap).length > 0
-      ? comportamentMap[valoare]
-      : valoare;
-  // Coduri noi / text liber fără comportament_vechi: 0 ore (până la Faza 4)
-  if (
-    comportamentMap &&
-    Object.keys(comportamentMap).length > 0 &&
-    lookup === undefined
-  ) {
-    return 0;
-  }
-  const keyVal = lookup ?? valoare;
-  if (dayAbbr === "V" && keyVal !== "1/3") return 0;
-  const key = oreOsdKey(categorieId, dayAbbr, keyVal);
-  const ore = rates[key];
-  if (typeof ore === "number" && Number.isFinite(ore)) return ore;
-  const fallback = FALLBACK_RATES[oreOsdKey("__default__", dayAbbr, keyVal)];
-  return typeof fallback === "number" && Number.isFinite(fallback)
-    ? fallback
-    : 0;
+  const r = ratesByCod[valoare];
+  if (!r) return 0;
+  if (dayAbbr === "V") return r.vineri || 0;
+  if (dayAbbr === "S") return r.sambata || 0;
+  if (dayAbbr === "D") return r.duminica || 0;
+  return 0;
 }
 
 export function totalOsdOre(
-  categorieId: string,
   days: Array<{ abbr: string; key: string }>,
   cells: Record<string, { valoare?: string } | undefined>,
-  rates: OreOsdRates,
-  comportamentMap?: Record<string, string>,
+  ratesByCod: OreCoduriByCod,
 ): number {
   let total = 0;
   for (const day of days) {
     const valoare = cells[day.key]?.valoare ?? "";
-    total += orePentruCasuta(
-      categorieId,
-      day.abbr,
-      valoare,
-      rates,
-      comportamentMap,
-    );
+    total += orePentruCasuta(day.abbr, valoare, ratesByCod);
   }
   return total;
+}
+
+/** Breakdown V / S / D + total pentru un angajat pe luna curentă */
+export function osdBreakdown(
+  days: Array<{ abbr: string; key: string }>,
+  cells: Record<string, { valoare?: string } | undefined>,
+  ratesByCod: OreCoduriByCod,
+): { v: number; s: number; d: number; total: number } {
+  let v = 0;
+  let s = 0;
+  let d = 0;
+  for (const day of days) {
+    const valoare = cells[day.key]?.valoare ?? "";
+    const ore = orePentruCasuta(day.abbr, valoare, ratesByCod);
+    if (day.abbr === "V") v += ore;
+    else if (day.abbr === "S") s += ore;
+    else if (day.abbr === "D") d += ore;
+  }
+  return { v, s, d, total: v + s + d };
 }

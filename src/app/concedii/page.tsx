@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { OreOsdPanel } from "@/components/schedule/OreOsdPanel";
 import type { ConcediiResponse, ConcediuDto } from "@/lib/types";
 
 type CategorieTab = {
@@ -460,13 +459,6 @@ export default function ConcediiPage() {
             </div>
           )}
         </div>
-
-        {activeCategorie && (
-          <OreOsdPanel
-            categorieId={activeCategorie.id}
-            categorieNume={activeCategorie.nume}
-          />
-        )}
       </div>
     </main>
   );

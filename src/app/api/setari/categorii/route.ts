@@ -6,6 +6,7 @@ import {
   seedOreOsdForCategorie,
   type CategorieDto,
 } from "@/lib/categorii";
+import { seedOreCoduriForNewCategorie } from "@/lib/oreCoduri";
 import { getDb } from "@/lib/db";
 import { clientKey } from "@/lib/rateLimit";
 import { readJsonLimited } from "@/lib/readJsonLimited";
@@ -88,6 +89,7 @@ export async function POST(request: Request) {
     }
 
     await seedOreOsdForCategorie(workspaceId, String(row.id), null);
+    await seedOreCoduriForNewCategorie(workspaceId, String(row.id));
 
     await writeAudit({
       action: "categorie_create",
@@ -322,6 +324,10 @@ export async function DELETE(request: Request) {
       );
     }
 
+    await sql`
+      DELETE FROM ore_coduri
+      WHERE workspace_id = ${workspaceId}::uuid AND categorie_id = ${id}::uuid
+    `;
     await sql`
       DELETE FROM ore_osd
       WHERE workspace_id = ${workspaceId}::uuid AND categorie_id = ${id}::uuid
