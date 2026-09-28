@@ -1,4 +1,7 @@
-import type { AngajatPost } from "@/lib/post";
+import {
+  categorieSlugFromGraficTitle,
+  graficExportFileNameForCategorie,
+} from "@/lib/categorii";
 
 export const EXPORT_FORMATS = ["pdf", "docx", "xlsx", "xls"] as const;
 export type ExportFormat = (typeof EXPORT_FORMATS)[number];
@@ -21,16 +24,23 @@ export function exportFormatLabel(format: ExportFormat): string {
 export function graficExportFileName(
   an: number,
   luna: number,
-  post: AngajatPost,
+  categorieNume: string,
   format: ExportFormat,
   suffix = "",
 ): string {
-  const kind = post === "infirmier" ? "infirmiere" : "asistenti";
-  const base = `grafic-${kind}-${an}-${String(luna).padStart(2, "0")}`;
-  const mid = suffix ? `${base}-${suffix}` : base;
-  return `${mid}.${format}`;
+  return graficExportFileNameForCategorie(
+    an,
+    luna,
+    categorieNume,
+    format,
+    suffix,
+  );
 }
 
-export function postFromGraficTitle(title: string): AngajatPost {
-  return /INFIRMIERE/i.test(title) ? "infirmier" : "asistent";
+/** Pentru arhivă: derivează slug din titlul salvat. */
+export function categorieNumeFromGraficTitle(title: string): string {
+  const slug = categorieSlugFromGraficTitle(title);
+  if (slug === "infirmiere") return "Infirmiere";
+  if (slug === "asistenti") return "Asistenți";
+  return slug;
 }

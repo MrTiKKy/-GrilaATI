@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { writeAudit } from "@/lib/audit";
 import { guardWrite } from "@/lib/apiGuard";
+import { getCategorie } from "@/lib/categorii";
 import { getDb } from "@/lib/db";
-import { isAngajatPost } from "@/lib/post";
 import { clientKey } from "@/lib/rateLimit";
 import { readJsonLimited } from "@/lib/readJsonLimited";
 import { clampString } from "@/lib/validate";
@@ -32,24 +32,46 @@ export async function POST(request: Request) {
         ? parsed.data.zileCoAn
         : 0;
 
-    const post = isAngajatPost(parsed.data.post)
-      ? parsed.data.post
-      : "asistent";
+    const categorieId =
+      typeof parsed.data.categorieId === "string"
+        ? parsed.data.categorieId.trim()
+        : "";
+    if (!categorieId) {
+      return NextResponse.json(
+        { error: "Categoria este obligatorie" },
+        { status: 400 },
+      );
+    }
+    const categorie = await getCategorie(workspaceId, categorieId);
+    if (!categorie) {
+      return NextResponse.json(
+        { error: "Categorie invalidă" },
+        { status: 400 },
+      );
+    }
 
     const sql = getDb();
-
     const maxRows = await sql`
       SELECT COALESCE(MAX(ordine), 0)::int AS max_ordine
       FROM angajati
       WHERE workspace_id = ${workspaceId}::uuid
         AND activ = true
+        AND categorie_id = ${categorieId}::uuid
     `;
     const ordine = Number(maxRows[0]?.max_ordine ?? 0) + 1;
 
     const inserted = await sql`
-      INSERT INTO angajati (workspace_id, nume, zile_co_an, ordine, activ, post)
-      VALUES (${workspaceId}::uuid, ${numeNorm}, ${zileCoAn}, ${ordine}, true, ${post})
-      RETURNING id, nume, zile_co_an, ordine, post
+      INSERT INTO angajati (workspace_id, nume, zile_co_an, ordine, activ, post, categorie_id)
+      VALUES (
+        ${workspaceId}::uuid,
+        ${numeNorm},
+        ${zileCoAn},
+        ${ordine},
+        true,
+        ${categorie.postVechi},
+        ${categorieId}::uuid
+      )
+      RETURNING id, nume, zile_co_an, ordine, categorie_id::text AS categorie_id
     `;
 
     const row = inserted[0];
@@ -60,18 +82,21 @@ export async function POST(request: Request) {
     await writeAudit({
       action: "angajat_create",
       resource: String(row.id),
-      detail: { nume: String(row.nume), zileCoAn, post },
+      detail: {
+        nume: String(row.nume),
+        zileCoAn,
+        categorieId,
+      },
       ip: clientKey(request),
       userId: user.userId,
       workspaceId,
     });
 
-    const postRaw = String(row.post ?? post);
     const response: CreateAngajatResponse = {
       angajat: {
         id: String(row.id),
         nume: String(row.nume),
-        post: isAngajatPost(postRaw) ? postRaw : post,
+        categorieId: String(row.categorie_id),
         zileCoAn: Number(row.zile_co_an),
         zileCoFolosite: 0,
         zileCoRamase: Number(row.zile_co_an),
@@ -82,10 +107,9 @@ export async function POST(request: Request) {
     return NextResponse.json(response, { status: 201 });
   } catch (error) {
     console.error("POST /api/angajati", error);
-    const message =
-      error instanceof Error && /column .*post/i.test(error.message)
-        ? "Coloana post lipsește — rulează sql/add_post.sql în Neon"
-        : "Nu s-a putut adăuga angajatul";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json(
+      { error: "Nu s-a putut adăuga angajatul" },
+      { status: 500 },
+    );
   }
 }

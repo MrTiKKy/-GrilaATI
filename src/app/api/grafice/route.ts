@@ -5,8 +5,8 @@ import {
   buildGraficSnapshotFromDb,
   buildMonthTitle,
 } from "@/lib/buildGraficSnapshot";
+import { getCategorie } from "@/lib/categorii";
 import { getDb } from "@/lib/db";
-import { isAngajatPost } from "@/lib/post";
 import { clientKey } from "@/lib/rateLimit";
 import { readJsonLimited } from "@/lib/readJsonLimited";
 import { parseMonth, parseYear } from "@/lib/validate";
@@ -106,9 +106,23 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "luna invalidă" }, { status: 400 });
     }
 
-    const post = isAngajatPost(parsed.data.post)
-      ? parsed.data.post
-      : "asistent";
+    const categorieId =
+      typeof parsed.data.categorieId === "string"
+        ? parsed.data.categorieId.trim()
+        : "";
+    if (!categorieId) {
+      return NextResponse.json(
+        { error: "categorieId obligatoriu" },
+        { status: 400 },
+      );
+    }
+    const categorie = await getCategorie(workspaceId, categorieId);
+    if (!categorie) {
+      return NextResponse.json(
+        { error: "Categorie invalidă" },
+        { status: 400 },
+      );
+    }
 
     const foaieRaw = Number(parsed.data.foaie ?? 1);
     const foaie =
@@ -116,8 +130,14 @@ export async function POST(request: Request) {
         ? foaieRaw
         : 1;
 
-    const snapshot = await buildGraficSnapshotFromDb(workspaceId, an, luna, post, foaie);
-    const titluBase = buildMonthTitle(an, luna, post);
+    const snapshot = await buildGraficSnapshotFromDb(
+      workspaceId,
+      an,
+      luna,
+      categorieId,
+      foaie,
+    );
+    const titluBase = buildMonthTitle(categorie.titluGrafic, an, luna);
     const titlu = foaie > 1 ? `${titluBase} · Sheet ${foaie}` : titluBase;
 
     const sql = getDb();
@@ -135,7 +155,13 @@ export async function POST(request: Request) {
     await writeAudit({
       action: "grafic_save",
       resource: String(row.id),
-      detail: { an, luna, post, foaie, rows: snapshot.rows.length },
+      detail: {
+        an,
+        luna,
+        categorieId,
+        foaie,
+        rows: snapshot.rows.length,
+      },
       ip: clientKey(request),
       userId: user.userId,
       workspaceId,
@@ -160,10 +186,10 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error("POST /api/grafice", error);
     const message =
-      error instanceof Error && /column .*post/i.test(error.message)
-        ? "Coloana post lipsește — rulează sql/add_post.sql în Neon"
-        : error instanceof Error && /grafice_finale/i.test(error.message)
-          ? "Tabelul grafice_finale lipsește — rulează sql/grafice_finale.sql în Neon"
+      error instanceof Error && /grafice_finale/i.test(error.message)
+        ? "Tabelul grafice_finale lipsește — rulează sql/grafice_finale.sql în Neon"
+        : error instanceof Error && /Categorie/i.test(error.message)
+          ? error.message
           : "Nu s-a putut salva graficul";
     return NextResponse.json({ error: message }, { status: 500 });
   }

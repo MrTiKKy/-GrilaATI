@@ -1,28 +1,24 @@
 import { NextResponse } from "next/server";
 import { writeAudit } from "@/lib/audit";
 import { guardWrite } from "@/lib/apiGuard";
+import { getCategorie } from "@/lib/categorii";
 import {
   countFoaieCells,
   createNextFoaie,
   deleteFoaie,
   parseFoaie,
 } from "@/lib/foi";
-import { isAngajatPost, postFromTabParam } from "@/lib/post";
 import { clientKey } from "@/lib/rateLimit";
 import { readJsonLimited } from "@/lib/readJsonLimited";
 import { parseMonth, parseYear } from "@/lib/validate";
 
-function resolvePost(data: {
-  post?: unknown;
-  tab?: unknown;
-}) {
-  if (isAngajatPost(data.post)) return data.post;
-  return postFromTabParam(
-    typeof data.tab === "string" ? data.tab : null,
-  );
+function resolveCategorieId(data: { categorieId?: unknown }): string | null {
+  return typeof data.categorieId === "string" && data.categorieId.trim()
+    ? data.categorieId.trim()
+    : null;
 }
 
-/** Creează Sheet N+1 (tabel gol) pentru luna/post. */
+/** Creează Sheet N+1 (tabel gol) pentru luna/categorie. */
 export async function POST(request: Request) {
   const gated = await guardWrite(request, { limit: 30 });
   if (gated instanceof NextResponse) return gated;
@@ -32,23 +28,36 @@ export async function POST(request: Request) {
     const parsed = await readJsonLimited<{
       an?: unknown;
       luna?: unknown;
-      post?: unknown;
-      tab?: unknown;
+      categorieId?: unknown;
     }>(request, 2_048);
     if (!parsed.ok) return parsed.response;
 
     const an = parseYear(parsed.data.an);
     const luna = parseMonth(parsed.data.luna);
-    if (an === null || luna === null) {
-      return NextResponse.json({ error: "an/luna invalide" }, { status: 400 });
+    const categorieId = resolveCategorieId(parsed.data);
+    if (an === null || luna === null || !categorieId) {
+      return NextResponse.json(
+        { error: "an/luna/categorieId invalide" },
+        { status: 400 },
+      );
+    }
+    if (!(await getCategorie(workspaceId, categorieId))) {
+      return NextResponse.json(
+        { error: "Categorie invalidă" },
+        { status: 400 },
+      );
     }
 
-    const post = resolvePost(parsed.data);
-    const { foaie, foi } = await createNextFoaie(workspaceId, an, luna, post);
+    const { foaie, foi } = await createNextFoaie(
+      workspaceId,
+      an,
+      luna,
+      categorieId,
+    );
 
     await writeAudit({
       action: "foaie_create",
-      detail: { an, luna, post, foaie },
+      detail: { an, luna, categorieId, foaie },
       ip: clientKey(request),
       userId: user.userId,
       workspaceId,
@@ -60,8 +69,8 @@ export async function POST(request: Request) {
     const message =
       error instanceof Error && /Maxim 50/i.test(error.message)
         ? error.message
-        : error instanceof Error && /luna_foi|foaie/i.test(error.message)
-          ? "Tabelele pentru foi lipsesc — rulează sql/add_foi.sql în Neon"
+        : error instanceof Error && /luna_foi|foaie|categorie/i.test(error.message)
+          ? "Tabelele pentru foi/categorii lipsesc"
           : "Nu s-a putut crea foaia";
     return NextResponse.json({ error: message }, { status: 500 });
   }
@@ -69,7 +78,7 @@ export async function POST(request: Request) {
 
 /**
  * Șterge o foaie. Doar foaia cerută; dacă are casuțe, trebuie confirm=true.
- * Body: { an, luna, post?, foaie, confirm?: boolean }
+ * Body: { an, luna, categorieId, foaie, confirm?: boolean }
  */
 export async function DELETE(request: Request) {
   const gated = await guardWrite(request, { limit: 30 });
@@ -80,8 +89,7 @@ export async function DELETE(request: Request) {
     const parsed = await readJsonLimited<{
       an?: unknown;
       luna?: unknown;
-      post?: unknown;
-      tab?: unknown;
+      categorieId?: unknown;
       foaie?: unknown;
       confirm?: unknown;
     }>(request, 2_048);
@@ -90,15 +98,21 @@ export async function DELETE(request: Request) {
     const an = parseYear(parsed.data.an);
     const luna = parseMonth(parsed.data.luna);
     const foaie = parseFoaie(parsed.data.foaie);
-    if (an === null || luna === null || foaie === null) {
+    const categorieId = resolveCategorieId(parsed.data);
+    if (an === null || luna === null || foaie === null || !categorieId) {
       return NextResponse.json(
-        { error: "an/luna/foaie invalide" },
+        { error: "an/luna/foaie/categorieId invalide" },
         { status: 400 },
       );
     }
 
-    const post = resolvePost(parsed.data);
-    const filled = await countFoaieCells(workspaceId, an, luna, post, foaie);
+    const filled = await countFoaieCells(
+      workspaceId,
+      an,
+      luna,
+      categorieId,
+      foaie,
+    );
     const confirmed = parsed.data.confirm === true;
 
     if (filled > 0 && !confirmed) {
@@ -112,11 +126,17 @@ export async function DELETE(request: Request) {
       );
     }
 
-    const { foi, nextFoaie } = await deleteFoaie(workspaceId, an, luna, post, foaie);
+    const { foi, nextFoaie } = await deleteFoaie(
+      workspaceId,
+      an,
+      luna,
+      categorieId,
+      foaie,
+    );
 
     await writeAudit({
       action: "foaie_delete",
-      detail: { an, luna, post, foaie, filled, confirmed },
+      detail: { an, luna, categorieId, foaie, filled, confirmed },
       ip: clientKey(request),
       userId: user.userId,
       workspaceId,
@@ -127,10 +147,10 @@ export async function DELETE(request: Request) {
     console.error("DELETE /api/foi", error);
     const message =
       error instanceof Error &&
-      (/Nu poți șterge|nu există/i.test(error.message))
+      /Nu poți șterge|nu există/i.test(error.message)
         ? error.message
-        : error instanceof Error && /luna_foi|foaie/i.test(error.message)
-          ? "Tabelele pentru foi lipsesc — rulează sql/add_foi.sql în Neon"
+        : error instanceof Error && /luna_foi|foaie|categorie/i.test(error.message)
+          ? "Tabelele pentru foi/categorii lipsesc"
           : "Nu s-a putut șterge foaia";
     return NextResponse.json({ error: message }, { status: 500 });
   }

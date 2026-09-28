@@ -1,27 +1,25 @@
 "use client";
 
 import { useId, useState } from "react";
-import { postLabelSingular, type AngajatPost } from "@/lib/post";
 
 type AddStaffDialogProps = {
   open: boolean;
-  post: AngajatPost;
+  categorieNume: string;
   onClose: () => void;
   onSubmit: (name: string) => void;
 };
 
 function DialogForm({
-  post,
+  categorieNume,
   onClose,
   onSubmit,
 }: {
-  post: AngajatPost;
+  categorieNume: string;
   onClose: () => void;
   onSubmit: (name: string) => void;
 }) {
   const [name, setName] = useState("");
   const titleId = useId();
-  const kind = postLabelSingular(post);
 
   function submit() {
     const trimmed = name.trim();
@@ -45,7 +43,7 @@ function DialogForm({
         className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-5 shadow-xl shadow-slate-900/10"
       >
         <h2 id={titleId} className="text-base font-semibold text-slate-900">
-          Adaugă {kind}
+          Adaugă angajat · {categorieNume}
         </h2>
         <label className="mt-4 block text-xs font-medium tracking-wide text-slate-500 uppercase">
           Nume
@@ -92,15 +90,15 @@ function DialogForm({
 
 export function AddStaffDialog({
   open,
-  post,
+  categorieNume,
   onClose,
   onSubmit,
 }: AddStaffDialogProps) {
   if (!open) return null;
   return (
     <DialogForm
-      key={`add-staff-${post}`}
-      post={post}
+      key={`add-staff-${categorieNume}`}
+      categorieNume={categorieNume}
       onClose={onClose}
       onSubmit={onSubmit}
     />

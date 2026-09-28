@@ -1,40 +1,46 @@
 import { getDb } from "@/lib/db";
-import { isAngajatPost } from "@/lib/post";
 import {
   cellsToRates,
   isOreOsdSchimb,
   isOreOsdZi,
-  mergeWithDefaults,
+  mergeWithDefaultsForCategorie,
   type OreOsdCell,
   type OreOsdRates,
 } from "@/lib/oreOsd";
 
-export async function loadOreOsdCells(
+export async function loadOreOsdCellsForCategorie(
   workspaceId: string,
+  categorieId: string,
 ): Promise<OreOsdCell[]> {
   const sql = getDb();
   const rows = await sql`
-    SELECT post, zi, schimb, ore::float AS ore
+    SELECT categorie_id::text AS categorie_id, zi, schimb, ore::float AS ore
     FROM ore_osd
     WHERE workspace_id = ${workspaceId}::uuid
+      AND categorie_id = ${categorieId}::uuid
   `;
   const cells: OreOsdCell[] = [];
   for (const row of rows) {
-    const post = String(row.post);
     const zi = String(row.zi);
     const schimb = String(row.schimb);
     const ore = Number(row.ore);
-    if (!isAngajatPost(post) || !isOreOsdZi(zi) || !isOreOsdSchimb(schimb)) {
-      continue;
-    }
+    if (!isOreOsdZi(zi) || !isOreOsdSchimb(schimb)) continue;
     if (!Number.isFinite(ore)) continue;
-    cells.push({ post, zi, schimb, ore });
+    cells.push({
+      categorieId: String(row.categorie_id),
+      zi,
+      schimb,
+      ore,
+    });
   }
-  return mergeWithDefaults(cells);
+  return mergeWithDefaultsForCategorie(categorieId, cells);
 }
 
-export async function loadOreOsdRates(
+export async function loadOreOsdRatesForCategorie(
   workspaceId: string,
+  categorieId: string,
 ): Promise<OreOsdRates> {
-  return cellsToRates(await loadOreOsdCells(workspaceId));
+  return cellsToRates(
+    await loadOreOsdCellsForCategorie(workspaceId, categorieId),
+  );
 }

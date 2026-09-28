@@ -7,7 +7,7 @@ import { downloadGraficExport } from "@/components/export/downloadGraficExport";
 import {
   exportFormatLabel,
   graficExportFileName,
-  postFromGraficTitle,
+  categorieNumeFromGraficTitle,
   type ExportFormat,
 } from "@/lib/exportFormats";
 import type {
@@ -104,8 +104,16 @@ export default function IstoricPage() {
       const res = await fetch(`/api/grafice/${id}`);
       if (!res.ok) throw new Error(await readError(res));
       const detail = (await res.json()) as GraficFinalDetail;
-      const post = postFromGraficTitle(detail.titlu || detail.snapshot.title);
-      const fileName = graficExportFileName(an, luna, post, format, "arhiva");
+      const categorieNume = categorieNumeFromGraficTitle(
+        detail.titlu || detail.snapshot.title,
+      );
+      const fileName = graficExportFileName(
+        an,
+        luna,
+        categorieNume,
+        format,
+        "arhiva",
+      );
       await downloadGraficExport(detail.snapshot, fileName, format);
       setStatus(`${exportFormatLabel(format)} regenerat din arhivă`);
       window.setTimeout(() => setStatus(null), 2500);

@@ -3,8 +3,14 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { OreOsdPanel } from "@/components/schedule/OreOsdPanel";
-import { postLabel, type AngajatPost } from "@/lib/post";
 import type { ConcediiResponse, ConcediuDto } from "@/lib/types";
+
+type CategorieTab = {
+  id: string;
+  nume: string;
+  titluGrafic: string;
+  ordine: number;
+};
 
 async function readError(res: Response): Promise<string> {
   try {
@@ -215,7 +221,8 @@ function ConcediuRow({
 export default function ConcediiPage() {
   const currentYear = useMemo(() => new Date().getFullYear(), []);
   const [an, setAn] = useState(currentYear);
-  const [post, setPost] = useState<AngajatPost>("asistent");
+  const [categories, setCategories] = useState<CategorieTab[]>([]);
+  const [categorieId, setCategorieId] = useState<string | null>(null);
   const [allRows, setAllRows] = useState<ConcediuDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -226,10 +233,47 @@ export default function ConcediiPage() {
     [currentYear],
   );
 
-  const rows = useMemo(
-    () => allRows.filter((r) => r.post === post),
-    [allRows, post],
+  const activeCategorie = useMemo(
+    () => categories.find((c) => c.id === categorieId) ?? categories[0] ?? null,
+    [categories, categorieId],
   );
+
+  const rows = useMemo(
+    () =>
+      activeCategorie
+        ? allRows.filter((r) => r.categorieId === activeCategorie.id)
+        : [],
+    [allRows, activeCategorie],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadCategories() {
+      try {
+        const res = await fetch("/api/categorii");
+        if (!res.ok) throw new Error(await readError(res));
+        const data = (await res.json()) as { items: CategorieTab[] };
+        if (cancelled) return;
+        const sorted = [...(data.items ?? [])].sort(
+          (a, b) => a.ordine - b.ordine,
+        );
+        setCategories(sorted);
+        setCategorieId((prev) =>
+          prev && sorted.some((c) => c.id === prev) ? prev : sorted[0]?.id ?? null,
+        );
+      } catch (e) {
+        if (!cancelled) {
+          setError(
+            e instanceof Error ? e.message : "Nu s-au putut încărca categoriile",
+          );
+        }
+      }
+    }
+    void loadCategories();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -276,10 +320,9 @@ export default function ConcediiPage() {
     return () => mq.removeEventListener("change", apply);
   }, []);
 
-  const emptyLabel =
-    post === "infirmier"
-      ? "Nicio infirmieră activă."
-      : "Niciun asistent activ.";
+  const emptyLabel = activeCategorie
+    ? `Niciun angajat activ în ${activeCategorie.nume}.`
+    : "Niciun angajat activ.";
 
   return (
     <main className="min-h-full flex-1 bg-slate-100 py-6 sm:py-8">
@@ -288,7 +331,7 @@ export default function ConcediiPage() {
           <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <p className="text-xs font-medium tracking-wide text-sky-700 uppercase">
-                Concediu de odihnă · {postLabel(post)}
+                Concediu de odihnă · {activeCategorie?.nume ?? "…"}
               </p>
               <h1 className="mt-1 text-xl font-semibold tracking-tight text-slate-900">
                 Zile CO pe angajat
@@ -305,22 +348,17 @@ export default function ConcediiPage() {
           <div
             className="mb-4 flex gap-1 rounded-xl border border-slate-200 bg-slate-50 p-1"
             role="tablist"
-            aria-label="Tip personal"
+            aria-label="Categorii"
           >
-            {(
-              [
-                { id: "asistent" as const, label: "Asistenți" },
-                { id: "infirmier" as const, label: "Infirmiere" },
-              ] as const
-            ).map((tab) => {
-              const selected = post === tab.id;
+            {categories.map((tab) => {
+              const selected = activeCategorie?.id === tab.id;
               return (
                 <button
                   key={tab.id}
                   type="button"
                   role="tab"
                   aria-selected={selected}
-                  onClick={() => setPost(tab.id)}
+                  onClick={() => setCategorieId(tab.id)}
                   className={[
                     "flex-1 rounded-lg px-3 py-2 text-sm font-semibold transition-colors duration-150",
                     selected
@@ -328,7 +366,7 @@ export default function ConcediiPage() {
                       : "text-slate-600 hover:text-slate-900",
                   ].join(" ")}
                 >
-                  {tab.label}
+                  {tab.nume}
                 </button>
               );
             })}
@@ -423,7 +461,12 @@ export default function ConcediiPage() {
           )}
         </div>
 
-        <OreOsdPanel />
+        {activeCategorie && (
+          <OreOsdPanel
+            categorieId={activeCategorie.id}
+            categorieNume={activeCategorie.nume}
+          />
+        )}
       </div>
     </main>
   );

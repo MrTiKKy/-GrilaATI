@@ -1,5 +1,4 @@
 import { getDb } from "@/lib/db";
-import type { AngajatPost } from "@/lib/post";
 
 export function parseFoaie(value: unknown): number | null {
   const n = typeof value === "number" ? value : Number(value);
@@ -7,24 +6,41 @@ export function parseFoaie(value: unknown): number | null {
   return n;
 }
 
+async function postVechiForCategorie(
+  workspaceId: string,
+  categorieId: string,
+): Promise<string | null> {
+  const sql = getDb();
+  const rows = await sql`
+    SELECT post_vechi
+    FROM categorii
+    WHERE workspace_id = ${workspaceId}::uuid
+      AND id = ${categorieId}::uuid
+    LIMIT 1
+  `;
+  const v = rows[0]?.post_vechi;
+  return v === null || v === undefined ? null : String(v);
+}
+
 /** Asigură Sheet 1 și returnează lista sortată de foi. */
 export async function ensureLunaFoi(
   workspaceId: string,
   an: number,
   luna: number,
-  post: AngajatPost,
+  categorieId: string,
 ): Promise<number[]> {
   const sql = getDb();
+  const post = await postVechiForCategorie(workspaceId, categorieId);
   await sql`
-    INSERT INTO luna_foi (workspace_id, an, luna, post, foaie)
-    VALUES (${workspaceId}::uuid, ${an}, ${luna}, ${post}, 1)
+    INSERT INTO luna_foi (workspace_id, an, luna, post, foaie, categorie_id)
+    VALUES (${workspaceId}::uuid, ${an}, ${luna}, ${post}, 1, ${categorieId}::uuid)
     ON CONFLICT DO NOTHING
   `;
   const rows = await sql`
     SELECT foaie
     FROM luna_foi
     WHERE workspace_id = ${workspaceId}::uuid
-      AND an = ${an} AND luna = ${luna} AND post = ${post}
+      AND an = ${an} AND luna = ${luna} AND categorie_id = ${categorieId}::uuid
     ORDER BY foaie ASC
   `;
   return rows.map((r) => Number(r.foaie));
@@ -34,26 +50,27 @@ export async function createNextFoaie(
   workspaceId: string,
   an: number,
   luna: number,
-  post: AngajatPost,
+  categorieId: string,
 ): Promise<{ foaie: number; foi: number[] }> {
   const sql = getDb();
-  await ensureLunaFoi(workspaceId, an, luna, post);
+  await ensureLunaFoi(workspaceId, an, luna, categorieId);
+  const post = await postVechiForCategorie(workspaceId, categorieId);
   const maxRows = await sql`
     SELECT COALESCE(MAX(foaie), 0)::int AS max
     FROM luna_foi
     WHERE workspace_id = ${workspaceId}::uuid
-      AND an = ${an} AND luna = ${luna} AND post = ${post}
+      AND an = ${an} AND luna = ${luna} AND categorie_id = ${categorieId}::uuid
   `;
   const next = Number(maxRows[0]?.max ?? 0) + 1;
   if (next > 50) {
     throw new Error("Maxim 50 de foi pe lună");
   }
   await sql`
-    INSERT INTO luna_foi (workspace_id, an, luna, post, foaie)
-    VALUES (${workspaceId}::uuid, ${an}, ${luna}, ${post}, ${next})
+    INSERT INTO luna_foi (workspace_id, an, luna, post, foaie, categorie_id)
+    VALUES (${workspaceId}::uuid, ${an}, ${luna}, ${post}, ${next}, ${categorieId}::uuid)
     ON CONFLICT DO NOTHING
   `;
-  const foi = await ensureLunaFoi(workspaceId, an, luna, post);
+  const foi = await ensureLunaFoi(workspaceId, an, luna, categorieId);
   return { foaie: next, foi };
 }
 
@@ -62,7 +79,7 @@ export async function countFoaieCells(
   workspaceId: string,
   an: number,
   luna: number,
-  post: AngajatPost,
+  categorieId: string,
   foaie: number,
 ): Promise<number> {
   const sql = getDb();
@@ -80,7 +97,7 @@ export async function countFoaieCells(
       AND p.data >= ${start}::date
       AND p.data < ${end}::date
       AND p.foaie = ${foaie}
-      AND COALESCE(a.post, 'asistent') = ${post}
+      AND a.categorie_id = ${categorieId}::uuid
       AND (
         (p.valoare IS NOT NULL AND p.valoare <> '')
         OR (p.ciorna IS NOT NULL AND p.ciorna <> '')
@@ -93,11 +110,11 @@ export async function deleteFoaie(
   workspaceId: string,
   an: number,
   luna: number,
-  post: AngajatPost,
+  categorieId: string,
   foaie: number,
 ): Promise<{ foi: number[]; nextFoaie: number }> {
   const sql = getDb();
-  const foiBefore = await ensureLunaFoi(workspaceId, an, luna, post);
+  const foiBefore = await ensureLunaFoi(workspaceId, an, luna, categorieId);
   if (!foiBefore.includes(foaie)) {
     throw new Error("Foaia nu există");
   }
@@ -116,7 +133,7 @@ export async function deleteFoaie(
       AND p.workspace_id = a.workspace_id
       AND p.workspace_id = ${workspaceId}::uuid
       AND a.activ = true
-      AND COALESCE(a.post, 'asistent') = ${post}
+      AND a.categorie_id = ${categorieId}::uuid
       AND p.foaie = ${foaie}
       AND p.data >= ${start}::date
       AND p.data < ${end}::date
@@ -125,10 +142,12 @@ export async function deleteFoaie(
   await sql`
     DELETE FROM luna_foi
     WHERE workspace_id = ${workspaceId}::uuid
-      AND an = ${an} AND luna = ${luna} AND post = ${post} AND foaie = ${foaie}
+      AND an = ${an} AND luna = ${luna}
+      AND categorie_id = ${categorieId}::uuid
+      AND foaie = ${foaie}
   `;
 
-  const foi = await ensureLunaFoi(workspaceId, an, luna, post);
+  const foi = await ensureLunaFoi(workspaceId, an, luna, categorieId);
   const lower = foi.filter((n) => n < foaie);
   const nextFoaie =
     lower.length > 0 ? lower[lower.length - 1]! : (foi[0] ?? 1);

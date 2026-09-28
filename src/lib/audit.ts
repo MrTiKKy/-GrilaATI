@@ -20,7 +20,11 @@ export type AuditAction =
   | "grafic_footer_update"
   | "foaie_create"
   | "foaie_delete"
-  | "setari_general_update";
+  | "setari_general_update"
+  | "categorie_create"
+  | "categorie_update"
+  | "categorie_ordine"
+  | "categorie_delete";
 
 export async function writeAudit(params: {
   action: AuditAction;

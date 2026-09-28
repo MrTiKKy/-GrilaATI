@@ -1,7 +1,3 @@
-import type { AngajatPost } from "@/lib/post";
-
-export type { AngajatPost };
-
 export const PROGRAMARE_VALUES = [
   "1",
   "2",
@@ -23,8 +19,7 @@ export type SectieValoare = (typeof SECTIE_VALUES)[number];
 export type AngajatDto = {
   id: string;
   nume: string;
-  /** asistent | infirmier */
-  post: AngajatPost;
+  categorieId: string;
   zileCoAn: number;
   zileCoFolosite: number;
   zileCoRamase: number;
@@ -46,9 +41,10 @@ export type ProgramareDto = {
 export type LunaResponse = {
   an: number;
   luna: number;
+  categorieId: string;
   angajati: AngajatDto[];
   programari: ProgramareDto[];
-  /** Foi existente pentru post-ul cerut */
+  /** Foi existente pentru categoria cerută */
   foi?: number[];
   /** Foaia curentă */
   foaie?: number;
@@ -57,7 +53,7 @@ export type LunaResponse = {
 export type ConcediuDto = {
   id: string;
   nume: string;
-  post: AngajatPost;
+  categorieId: string;
   zileCoAn: number;
   folosite: number;
   ramase: number;
@@ -75,8 +71,7 @@ export type UpdateConcediuBody = {
 export type CreateAngajatBody = {
   nume: string;
   zileCoAn?: number;
-  /** default: asistent */
-  post?: AngajatPost;
+  categorieId: string;
 };
 
 export type CreateAngajatResponse = {
@@ -132,8 +127,7 @@ export type GraficFinalDetail = GraficFinalMeta & {
 export type CreateGraficBody = {
   an: number;
   luna: number;
-  /** asistent | infirmier — PDF separat pe tip */
-  post?: AngajatPost;
+  categorieId: string;
   /** Sheet / foaie exportată */
   foaie?: number;
 };
@@ -160,7 +154,6 @@ export function toDateString(value: unknown): string {
   }
 
   if (value instanceof Date && !Number.isNaN(value.getTime())) {
-    // Folosim componentele locale — NU toISOString() (mută ziua în UTC+2/+3)
     const y = value.getFullYear();
     const m = String(value.getMonth() + 1).padStart(2, "0");
     const d = String(value.getDate()).padStart(2, "0");
@@ -171,4 +164,3 @@ export function toDateString(value: unknown): string {
   const match = s.match(/^(\d{4}-\d{2}-\d{2})/);
   return match ? match[1] : s.slice(0, 10);
 }
-

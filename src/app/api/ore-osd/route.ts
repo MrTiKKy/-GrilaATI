@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { writeAudit } from "@/lib/audit";
 import { guardRead, guardWrite } from "@/lib/apiGuard";
+import { getCategorie } from "@/lib/categorii";
 import { getDb } from "@/lib/db";
-import { loadOreOsdCells } from "@/lib/loadOreOsd";
-import { isAngajatPost } from "@/lib/post";
+import { loadOreOsdCellsForCategorie } from "@/lib/loadOreOsd";
 import {
   isOreOsdSchimb,
   isOreOsdZi,
@@ -18,13 +18,27 @@ export async function GET(request: Request) {
   const { workspaceId } = gated;
 
   try {
-    const items = await loadOreOsdCells(workspaceId);
+    const { searchParams } = new URL(request.url);
+    const categorieId = searchParams.get("categorie");
+    if (!categorieId) {
+      return NextResponse.json(
+        { error: "Parametru categorie obligatoriu" },
+        { status: 400 },
+      );
+    }
+    if (!(await getCategorie(workspaceId, categorieId))) {
+      return NextResponse.json(
+        { error: "Categorie invalidă" },
+        { status: 400 },
+      );
+    }
+    const items = await loadOreOsdCellsForCategorie(workspaceId, categorieId);
     return NextResponse.json({ items });
   } catch (error) {
     console.error("GET /api/ore-osd", error);
     const message =
-      error instanceof Error && /ore_osd/i.test(error.message)
-        ? "Tabelul ore_osd lipsește — rulează sql/ore_osd.sql în Neon"
+      error instanceof Error && /ore_osd|categorie/i.test(error.message)
+        ? "Tabelul ore_osd / categorii lipsește"
         : "Nu s-au putut încărca orele O.SD";
     return NextResponse.json({ error: message }, { status: 500 });
   }
@@ -37,19 +51,34 @@ export async function PUT(request: Request) {
 
   try {
     const parsed = await readJsonLimited<{
-      post?: unknown;
+      categorieId?: unknown;
       zi?: unknown;
       schimb?: unknown;
       ore?: unknown;
     }>(request, 4_096);
     if (!parsed.ok) return parsed.response;
 
-    const post = parsed.data.post;
+    const categorieId =
+      typeof parsed.data.categorieId === "string"
+        ? parsed.data.categorieId.trim()
+        : "";
     const zi = parsed.data.zi;
     const schimb = parsed.data.schimb;
-    if (!isAngajatPost(post) || !isOreOsdZi(zi) || !isOreOsdSchimb(schimb)) {
+    if (
+      !categorieId ||
+      !isOreOsdZi(zi) ||
+      !isOreOsdSchimb(schimb)
+    ) {
       return NextResponse.json(
-        { error: "post / zi / schimb invalide" },
+        { error: "categorieId / zi / schimb invalide" },
+        { status: 400 },
+      );
+    }
+
+    const categorie = await getCategorie(workspaceId, categorieId);
+    if (!categorie) {
+      return NextResponse.json(
+        { error: "Categorie invalidă" },
         { status: 400 },
       );
     }
@@ -72,27 +101,35 @@ export async function PUT(request: Request) {
 
     const sql = getDb();
     await sql`
-      INSERT INTO ore_osd (workspace_id, post, zi, schimb, ore, updated_at)
-      VALUES (${workspaceId}::uuid, ${post}, ${zi}, ${schimb}, ${ore}, now())
-      ON CONFLICT (workspace_id, post, zi, schimb)
+      INSERT INTO ore_osd (workspace_id, categorie_id, post, zi, schimb, ore, updated_at)
+      VALUES (
+        ${workspaceId}::uuid,
+        ${categorieId}::uuid,
+        ${categorie.postVechi},
+        ${zi},
+        ${schimb},
+        ${ore},
+        now()
+      )
+      ON CONFLICT (workspace_id, categorie_id, zi, schimb)
       DO UPDATE SET ore = EXCLUDED.ore, updated_at = now()
     `;
 
     await writeAudit({
       action: "ore_osd_update",
-      detail: { post, zi, schimb, ore },
+      detail: { categorieId, zi, schimb, ore },
       ip: clientKey(request),
       userId: user.userId,
       workspaceId,
     });
 
-    const item: OreOsdCell = { post, zi, schimb, ore };
+    const item: OreOsdCell = { categorieId, zi, schimb, ore };
     return NextResponse.json({ item });
   } catch (error) {
     console.error("PUT /api/ore-osd", error);
     const message =
-      error instanceof Error && /ore_osd/i.test(error.message)
-        ? "Tabelul ore_osd lipsește — rulează sql/ore_osd.sql în Neon"
+      error instanceof Error && /ore_osd|categorie/i.test(error.message)
+        ? "Tabelul ore_osd / categorii lipsește"
         : "Nu s-a putut salva";
     return NextResponse.json({ error: message }, { status: 500 });
   }

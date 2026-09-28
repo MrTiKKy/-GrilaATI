@@ -23,7 +23,7 @@ export const SETARI_TABS: readonly SetariTab[] = [
     id: "categorii",
     label: "Categorii",
     href: "/setari/categorii",
-    enabled: false,
+    enabled: true,
   },
   {
     id: "programari",

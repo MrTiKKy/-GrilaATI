@@ -3,14 +3,13 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { CSSProperties, ReactNode } from "react";
-import type { AngajatPost } from "@/lib/post";
 import type { ProgramareCuloare } from "@/lib/culoare";
 import { CellFocus } from "./CellFocus";
 
 export type StaffMember = {
   id: string;
   name: string;
-  post: AngajatPost;
+  categorieId: string;
   zileCoAn: number;
   zileCoFolosite: number;
   zileCoRamase: number;

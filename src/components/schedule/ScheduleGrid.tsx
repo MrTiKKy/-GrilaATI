@@ -26,18 +26,12 @@ import {
   type KeyboardEvent,
   type TouchEvent,
 } from "react";
-import type { LunaResponse } from "@/lib/types";
+import type { CreateAngajatResponse, LunaResponse } from "@/lib/types";
 import {
   culoareFromDb,
   type ProgramareCuloare,
 } from "@/lib/culoare";
-import {
-  buildGraficTitle,
-  postFromTabParam,
-  postLabel,
-  tabParamFromPost,
-  type AngajatPost,
-} from "@/lib/post";
+import { buildGraficTitleFromCategorie } from "@/lib/categorii";
 import { parseMonth, parseYear, parseFoaieParam } from "@/lib/validate";
 import { AddStaffDialog } from "./AddStaffDialog";
 import { CellFocus } from "./CellFocus";
@@ -67,13 +61,19 @@ import { EditableFooterText } from "./EditableFooterText";
 import { totalOsdOre } from "@/lib/weekendOre";
 import {
   cellsToRates,
-  mergeWithDefaults,
-  ORE_OSD_DEFAULTS,
+  mergeWithDefaultsForCategorie,
   type OreOsdCell,
   type OreOsdRates,
 } from "@/lib/oreOsd";
 
 const DAY_ABBR = ["D", "L", "Ma", "Mi", "J", "V", "S"] as const;
+
+type CategorieTab = {
+  id: string;
+  nume: string;
+  titluGrafic: string;
+  ordine: number;
+};
 
 type DayColumn = {
   kind: "day";
@@ -154,7 +154,7 @@ function mapLunaToState(
   const staff: StaffMember[] = data.angajati.map((a) => ({
     id: a.id,
     name: a.nume,
-    post: a.post,
+    categorieId: a.categorieId,
     zileCoAn: a.zileCoAn,
     zileCoFolosite: a.zileCoFolosite,
     zileCoRamase: a.zileCoRamase,
@@ -179,25 +179,16 @@ function mapLunaToState(
   return { staff, grid };
 }
 
-function mergeStaffOrder(
-  all: StaffMember[],
-  visibleOrdered: StaffMember[],
-  post: AngajatPost,
-): StaffMember[] {
-  const queue = [...visibleOrdered];
-  return all.map((s) => (s.post === post ? queue.shift()! : s));
-}
-
 function buildMonthQuery(
   year: number,
   month: number,
-  post: AngajatPost,
+  categorieId: string,
   foaie = 1,
 ): string {
   const params = new URLSearchParams();
   params.set("an", String(year));
   params.set("luna", String(month));
-  params.set("tab", tabParamFromPost(post));
+  params.set("categorie", categorieId);
   if (foaie > 1) params.set("foaie", String(foaie));
   return params.toString();
 }
@@ -226,42 +217,139 @@ export function ScheduleGrid({
   const year = yearFromUrl ?? now.getFullYear();
   const month = monthFromUrl ?? now.getMonth() + 1;
   const monthIndex = month - 1;
-  const post = postFromTabParam(searchParams.get("tab"));
+  const categorieParam = searchParams.get("categorie");
+  const tabParam = searchParams.get("tab");
   const foaieFromUrl = parseFoaieParam(searchParams.get("foaie"));
   const foaie = foaieFromUrl ?? 1;
 
-  // Completează URL-ul când lipsește an/luna/tab (intrare pe / → luna curentă)
+  const [error, setError] = useState<string | null>(null);
+
+  const [categories, setCategories] = useState<CategorieTab[]>([]);
+  const [categoriesLoading, setCategoriesLoading] = useState(true);
+
   useEffect(() => {
+    let cancelled = false;
+    async function loadCategories() {
+      setCategoriesLoading(true);
+      try {
+        const res = await fetch("/api/categorii");
+        if (!res.ok) throw new Error(await readError(res));
+        const data = (await res.json()) as { items: CategorieTab[] };
+        if (cancelled) return;
+        setCategories(
+          [...(data.items ?? [])].sort((a, b) => a.ordine - b.ordine),
+        );
+      } catch (e) {
+        if (!cancelled) {
+          setError(
+            e instanceof Error ? e.message : "Nu s-au putut încărca categoriile",
+          );
+        }
+      } finally {
+        if (!cancelled) setCategoriesLoading(false);
+      }
+    }
+    void loadCategories();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const activeCategorie = useMemo(() => {
+    if (!categories.length) return null;
+    if (categorieParam) {
+      const found = categories.find((c) => c.id === categorieParam);
+      if (found) return found;
+    }
+    return categories[0];
+  }, [categories, categorieParam]);
+
+  const categorieId = activeCategorie?.id ?? null;
+
+  // Legacy ?tab= → ?categorie= sau completează an/luna/categorie
+  useEffect(() => {
+    if (categoriesLoading || !categories.length) return;
+
     const hasAn = searchParams.get("an") != null;
     const hasLuna = searchParams.get("luna") != null;
-    const hasTab = searchParams.get("tab") != null;
-    if (hasAn && hasLuna && hasTab) return;
-    router.replace(`${pathname}?${buildMonthQuery(year, month, post, foaie)}`, {
-      scroll: false,
-    });
-  }, [searchParams, pathname, router, year, month, post, foaie]);
+    const hasCategorie =
+      categorieParam != null &&
+      categories.some((c) => c.id === categorieParam);
+
+    if (hasCategorie && hasAn && hasLuna) return;
+
+    if (!hasCategorie && tabParam) {
+      let cancelled = false;
+      (async () => {
+        try {
+          const q = new URLSearchParams();
+          q.set("an", String(year));
+          q.set("luna", String(month));
+          q.set("tab", tabParam);
+          if (foaie > 1) q.set("foaie", String(foaie));
+          const res = await fetch(`/api/luna?${q.toString()}`);
+          if (!res.ok) throw new Error(await readError(res));
+          const data = (await res.json()) as LunaResponse;
+          if (cancelled) return;
+          router.replace(
+            `${pathname}?${buildMonthQuery(year, month, data.categorieId, data.foaie ?? foaie)}`,
+            { scroll: false },
+          );
+        } catch (e) {
+          if (!cancelled) {
+            setError(
+              e instanceof Error ? e.message : "Redirect categorie eșuat",
+            );
+          }
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const targetId = hasCategorie
+      ? categorieParam!
+      : categories[0].id;
+    router.replace(
+      `${pathname}?${buildMonthQuery(year, month, targetId, foaie)}`,
+      { scroll: false },
+    );
+  }, [
+    categories,
+    categoriesLoading,
+    categorieParam,
+    tabParam,
+    year,
+    month,
+    foaie,
+    pathname,
+    router,
+    searchParams,
+  ]);
 
   function goMonth(delta: number) {
+    if (!categorieId) return;
     const d = new Date(year, monthIndex + delta, 1);
     router.push(
-      `${pathname}?${buildMonthQuery(d.getFullYear(), d.getMonth() + 1, post, 1)}`,
+      `${pathname}?${buildMonthQuery(d.getFullYear(), d.getMonth() + 1, categorieId, 1)}`,
     );
   }
 
-  function setPostTab(next: AngajatPost) {
-    if (next === post) return;
+  function setCategorieTab(nextId: string) {
+    if (!categorieId || nextId === categorieId) return;
     setActive(null);
     setPanelOpen(false);
-    router.push(`${pathname}?${buildMonthQuery(year, month, next, 1)}`, {
+    router.push(`${pathname}?${buildMonthQuery(year, month, nextId, 1)}`, {
       scroll: false,
     });
   }
 
   function setFoaieTab(next: number) {
-    if (next === foaie) return;
+    if (!categorieId || next === foaie) return;
     setActive(null);
     setPanelOpen(false);
-    router.push(`${pathname}?${buildMonthQuery(year, month, post, next)}`, {
+    router.push(`${pathname}?${buildMonthQuery(year, month, categorieId, next)}`, {
       scroll: false,
     });
   }
@@ -277,10 +365,9 @@ export function ScheduleGrid({
   const [isDesktop, setIsDesktop] = useState(true);
   const [weekIndex, setWeekIndex] = useState(0);
 
-  const [allStaff, setAllStaff] = useState<StaffMember[]>([]);
+  const [staff, setStaff] = useState<StaffMember[]>([]);
   const [grid, setGrid] = useState<GridState>({});
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
 
   const [active, setActive] = useState<ActiveCell | null>(null);
@@ -298,10 +385,6 @@ export function ScheduleGrid({
   const statusTimer = useRef<number | null>(null);
   const touchStartX = useRef<number | null>(null);
 
-  const staff = useMemo(
-    () => allStaff.filter((s) => s.post === post),
-    [allStaff, post],
-  );
   const staffIds = useMemo(() => staff.map((s) => s.id), [staff]);
 
   useEffect(() => {
@@ -375,17 +458,20 @@ export function ScheduleGrid({
   useEffect(() => {
     let cancelled = false;
 
+    if (typeof categorieId !== "string") return;
+    const cid = categorieId;
+
     async function run() {
       setLoading(true);
       try {
         const res = await fetch(
-          `/api/luna?an=${year}&luna=${month}&tab=${tabParamFromPost(post)}&foaie=${foaie}`,
+          `/api/luna?an=${year}&luna=${month}&categorie=${encodeURIComponent(cid)}&foaie=${foaie}`,
         );
         if (!res.ok) throw new Error(await readError(res));
         const data = (await res.json()) as LunaResponse;
         if (cancelled) return;
         const mapped = mapLunaToState(data, dayColumns);
-        setAllStaff(mapped.staff);
+        setStaff(mapped.staff);
         setGrid(mapped.grid);
         const nextFoi =
           data.foi && data.foi.length > 0 ? data.foi : [1];
@@ -393,7 +479,7 @@ export function ScheduleGrid({
         // Dacă foaia din URL nu există, du-te pe prima
         if (data.foaie && data.foaie !== foaie) {
           router.replace(
-            `${pathname}?${buildMonthQuery(year, month, post, data.foaie)}`,
+            `${pathname}?${buildMonthQuery(year, month, cid, data.foaie)}`,
             { scroll: false },
           );
         }
@@ -414,24 +500,24 @@ export function ScheduleGrid({
       cancelled = true;
       if (statusTimer.current) window.clearTimeout(statusTimer.current);
     };
-  }, [dayColumns, year, month, post, foaie, pathname, router]);
+  }, [dayColumns, year, month, categorieId, foaie, pathname, router]);
 
   async function createFoaie() {
-    if (creatingFoaie || loading) return;
+    if (!categorieId || creatingFoaie || loading) return;
     setCreatingFoaie(true);
     setError(null);
     try {
       const res = await fetch("/api/foi", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ an: year, luna: month, post }),
+        body: JSON.stringify({ an: year, luna: month, categorieId }),
       });
       if (!res.ok) throw new Error(await readError(res));
       const data = (await res.json()) as { foaie: number; foi: number[] };
       setFoi(data.foi);
       flashStatus(`Sheet ${data.foaie} creat`);
       router.push(
-        `${pathname}?${buildMonthQuery(year, month, post, data.foaie)}`,
+        `${pathname}?${buildMonthQuery(year, month, categorieId!, data.foaie)}`,
         { scroll: false },
       );
     } catch (e) {
@@ -481,7 +567,7 @@ export function ScheduleGrid({
         body: JSON.stringify({
           an: year,
           luna: month,
-          post,
+          categorieId,
           foaie,
           confirm: hasData,
         }),
@@ -505,7 +591,7 @@ export function ScheduleGrid({
               body: JSON.stringify({
                 an: year,
                 luna: month,
-                post,
+                categorieId,
                 foaie,
                 confirm: true,
               }),
@@ -518,7 +604,7 @@ export function ScheduleGrid({
             setFoi(data2.foi);
             flashStatus(`Sheet ${foaie} șters`);
             router.push(
-              `${pathname}?${buildMonthQuery(year, month, post, data2.nextFoaie)}`,
+              `${pathname}?${buildMonthQuery(year, month, categorieId!, data2.nextFoaie)}`,
               { scroll: false },
             );
             return;
@@ -533,7 +619,7 @@ export function ScheduleGrid({
       setFoi(data.foi);
       flashStatus(`Sheet ${foaie} șters`);
       router.push(
-        `${pathname}?${buildMonthQuery(year, month, post, data.nextFoaie)}`,
+        `${pathname}?${buildMonthQuery(year, month, categorieId!, data.nextFoaie)}`,
         { scroll: false },
       );
     } catch (e) {
@@ -610,7 +696,7 @@ export function ScheduleGrid({
 
     // Actualizează soldul CO local (optimistic)
     if (wasCo !== willBeCo) {
-      setAllStaff((prevStaff) =>
+      setStaff((prevStaff) =>
         prevStaff.map((s) => {
           if (s.id !== person.id) return s;
           const delta = willBeCo ? 1 : -1;
@@ -649,7 +735,7 @@ export function ScheduleGrid({
         [person.id]: { ...g[person.id], [col.key]: prev },
       }));
       if (wasCo !== willBeCo) {
-        setAllStaff((prevStaff) =>
+        setStaff((prevStaff) =>
           prevStaff.map((s) => {
             if (s.id !== person.id) return s;
             const delta = wasCo ? 1 : -1;
@@ -670,14 +756,14 @@ export function ScheduleGrid({
   }
 
   async function exportGrafic(format: ExportFormat) {
-    if (exporting || loading) return;
+    if (!categorieId || exporting || loading) return;
     setExporting(true);
     setError(null);
     try {
       const saveRes = await fetch("/api/grafice", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ an: year, luna: month, post, foaie }),
+        body: JSON.stringify({ an: year, luna: month, categorieId, foaie }),
       });
       if (!saveRes.ok) throw new Error(await readError(saveRes));
       const saved = (await saveRes.json()) as { snapshot: GraficPdfData };
@@ -685,13 +771,13 @@ export function ScheduleGrid({
       const fileName = graficExportFileName(
         year,
         month,
-        post,
+        activeCategorie?.nume ?? "grafic",
         format,
         foaie > 1 ? `sheet${foaie}` : "",
       );
       await downloadGraficExport(saved.snapshot, fileName, format);
       flashStatus(
-        `${exportFormatLabel(format)} ${postLabel(post)} descărcat + salvat în arhivă`,
+        `${exportFormatLabel(format)} ${activeCategorie?.nume ?? ""} descărcat + salvat în arhivă`,
       );
     } catch (e) {
       setError(
@@ -705,29 +791,21 @@ export function ScheduleGrid({
   }
 
   async function addStaff(name: string) {
+    if (!categorieId) return;
     try {
       const res = await fetch("/api/angajati", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ nume: name, post }),
+        body: JSON.stringify({ nume: name, categorieId }),
       });
       if (!res.ok) throw new Error(await readError(res));
-      const data = (await res.json()) as {
-        angajat: {
-          id: string;
-          nume: string;
-          post: AngajatPost;
-          zileCoAn: number;
-          zileCoFolosite: number;
-          zileCoRamase: number;
-        };
-      };
-      setAllStaff((prev) => [
+      const data = (await res.json()) as CreateAngajatResponse;
+      setStaff((prev) => [
         ...prev,
         {
           id: data.angajat.id,
           name: data.angajat.nume,
-          post: data.angajat.post,
+          categorieId: data.angajat.categorieId,
           zileCoAn: data.angajat.zileCoAn,
           zileCoFolosite: data.angajat.zileCoFolosite,
           zileCoRamase: data.angajat.zileCoRamase,
@@ -750,12 +828,11 @@ export function ScheduleGrid({
     if (!ok) return;
 
     const oldIndex = staff.findIndex((s) => s.id === person.id);
-    const snapshotStaff = allStaff;
+    const snapshotStaff = staff;
     const snapshotGrid = grid;
 
-    const nextAll = allStaff.filter((s) => s.id !== person.id);
-    const nextVisible = nextAll.filter((s) => s.post === post);
-    setAllStaff(nextAll);
+    const nextVisible = staff.filter((s) => s.id !== person.id);
+    setStaff(nextVisible);
     setGrid((prev) => {
       const next = { ...prev };
       delete next[person.id];
@@ -780,7 +857,7 @@ export function ScheduleGrid({
       if (!res.ok) throw new Error(await readError(res));
       flashStatus("Angajat șters");
     } catch (e) {
-      setAllStaff(snapshotStaff);
+      setStaff(snapshotStaff);
       setGrid(snapshotGrid);
       setError(e instanceof Error ? e.message : "Ștergere eșuată");
     }
@@ -799,10 +876,9 @@ export function ScheduleGrid({
     const newIndex = staff.findIndex((s) => s.id === over.id);
     if (oldIndex < 0 || newIndex < 0) return;
 
-    const prevAll = allStaff;
+    const prevStaff = staff;
     const nextVisible = arrayMove(staff, oldIndex, newIndex);
-    const nextAll = mergeStaffOrder(allStaff, nextVisible, post);
-    setAllStaff(nextAll);
+    setStaff(nextVisible);
 
     if (active) {
       if (active.row === oldIndex) {
@@ -818,12 +894,12 @@ export function ScheduleGrid({
       const res = await fetch("/api/angajati/ordine", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ids: nextAll.map((s) => s.id) }),
+        body: JSON.stringify({ ids: nextVisible.map((s) => s.id) }),
       });
       if (!res.ok) throw new Error(await readError(res));
       flashStatus("Ordine salvată");
     } catch (e) {
-      setAllStaff(prevAll);
+      setStaff(prevStaff);
       setError(e instanceof Error ? e.message : "Reordonare eșuată");
     }
   }
@@ -853,19 +929,25 @@ export function ScheduleGrid({
     ? staff.find((s) => s.id === draggingId)
     : null;
 
-  const [osdRates, setOsdRates] = useState<OreOsdRates>(() =>
-    cellsToRates(ORE_OSD_DEFAULTS),
-  );
+  const [osdRates, setOsdRates] = useState<OreOsdRates>({});
 
   useEffect(() => {
+    if (typeof categorieId !== "string") return;
+    const cid = categorieId;
     let cancelled = false;
     async function loadRates() {
       try {
-        const res = await fetch("/api/ore-osd");
+        const res = await fetch(
+          `/api/ore-osd?categorie=${encodeURIComponent(cid)}`,
+        );
         if (!res.ok) return;
         const data = (await res.json()) as { items: OreOsdCell[] };
         if (cancelled) return;
-        setOsdRates(cellsToRates(mergeWithDefaults(data.items ?? [])));
+        const merged = mergeWithDefaultsForCategorie(
+          cid,
+          data.items ?? [],
+        );
+        setOsdRates(cellsToRates(merged));
       } catch {
         /* păstrează defaults */
       }
@@ -874,7 +956,7 @@ export function ScheduleGrid({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [categorieId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -905,11 +987,16 @@ export function ScheduleGrid({
     for (const person of staff) {
       map.set(
         person.id,
-        totalOsdOre(person.post, osdDays, grid[person.id] ?? {}, osdRates),
+        totalOsdOre(
+          categorieId ?? person.categorieId,
+          osdDays,
+          grid[person.id] ?? {},
+          osdRates,
+        ),
       );
     }
     return map;
-  }, [staff, osdDays, grid, osdRates]);
+  }, [staff, osdDays, grid, osdRates, categorieId]);
 
   const titleMonth = monthLabel(year, monthIndex);
 
@@ -958,7 +1045,7 @@ export function ScheduleGrid({
         <header className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
             <p className="text-xs font-medium tracking-wide text-sky-700 uppercase">
-              Programare lunară · {postLabel(post)}
+              Programare lunară · {activeCategorie?.nume ?? "…"}
             </p>
             <div className="mt-1 flex items-center gap-2">
               <button
@@ -971,10 +1058,16 @@ export function ScheduleGrid({
               </button>
               <h1 className="min-w-0 flex-1 text-center text-base font-semibold tracking-tight text-slate-900 sm:text-left sm:text-lg">
                 <span className="lg:hidden">
-                  {postLabel(post)} · {titleMonth}
+                  {activeCategorie?.nume ?? "…"} · {titleMonth}
                 </span>
                 <span className="hidden lg:inline">
-                  {buildGraficTitle(year, month, post)}
+                  {activeCategorie
+                    ? buildGraficTitleFromCategorie(
+                        activeCategorie.titluGrafic,
+                        year,
+                        month,
+                      )
+                    : titleMonth}
                 </span>
               </h1>
               <button
@@ -1000,7 +1093,7 @@ export function ScheduleGrid({
             <ExportGraficMenu
               disabled={loading || staff.length === 0}
               busy={exporting}
-              label={`Export ${postLabel(post)}`}
+              label={`Export ${activeCategorie?.nume ?? "grafic"}`}
               onSelect={(format) => void exportGrafic(format)}
             />
             <Link
@@ -1029,22 +1122,18 @@ export function ScheduleGrid({
         <div
           className="mb-4 flex gap-1 rounded-xl border border-slate-200 bg-slate-50 p-1"
           role="tablist"
-          aria-label="Tip personal"
+          aria-label="Categorii"
         >
-          {(
-            [
-              { id: "asistent" as const, label: "Asistenți" },
-              { id: "infirmier" as const, label: "Infirmiere" },
-            ] as const
-          ).map((tab) => {
-            const selected = post === tab.id;
+          {categories.map((tab) => {
+            const selected = categorieId === tab.id;
             return (
               <button
                 key={tab.id}
                 type="button"
                 role="tab"
                 aria-selected={selected}
-                onClick={() => setPostTab(tab.id)}
+                disabled={categoriesLoading}
+                onClick={() => setCategorieTab(tab.id)}
                 className={[
                   "flex-1 rounded-lg px-3 py-2 text-sm font-semibold transition-colors duration-150",
                   selected
@@ -1052,7 +1141,7 @@ export function ScheduleGrid({
                     : "text-slate-600 hover:text-slate-900",
                 ].join(" ")}
               >
-                {tab.label}
+                {tab.nume}
               </button>
             );
           })}
@@ -1174,9 +1263,9 @@ export function ScheduleGrid({
                         colSpan={visibleColumns.length + (isDesktop ? 2 : 1)}
                         className="px-4 py-8 text-center text-sm text-slate-500"
                       >
-                        {post === "infirmier"
-                          ? "Nicio infirmieră pe această grilă. Adaugă primul rând mai jos."
-                          : "Niciun asistent pe această grilă. Adaugă primul rând mai jos."}
+                        {activeCategorie
+                          ? `Niciun angajat în ${activeCategorie.nume}. Adaugă primul rând mai jos.`
+                          : "Niciun angajat pe această grilă. Adaugă primul rând mai jos."}
                       </td>
                     </tr>
                   ) : (
@@ -1285,7 +1374,7 @@ export function ScheduleGrid({
             onClick={() => setAddOpen(true)}
             className="w-full rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3.5 py-2.5 text-sm font-medium text-slate-700 transition-colors duration-150 hover:border-sky-400 hover:bg-sky-50 hover:text-sky-800 sm:w-auto sm:py-2"
           >
-            + Adaugă {post === "infirmier" ? "infirmieră" : "asistent"}
+            + Adaugă angajat
           </button>
         </div>
 
@@ -1353,7 +1442,7 @@ export function ScheduleGrid({
 
       <AddStaffDialog
         open={addOpen}
-        post={post}
+        categorieNume={activeCategorie?.nume ?? "categorie"}
         onClose={() => setAddOpen(false)}
         onSubmit={(name) => void addStaff(name)}
       />

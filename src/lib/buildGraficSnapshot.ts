@@ -1,29 +1,37 @@
 import { getDb } from "@/lib/db";
 import { loadGraficFooter } from "@/lib/loadGraficFooter";
-import { loadOreOsdRates } from "@/lib/loadOreOsd";
-import { buildGraficTitle, type AngajatPost } from "@/lib/post";
+import { loadOreOsdRatesForCategorie } from "@/lib/loadOreOsd";
+import {
+  buildGraficTitleFromCategorie,
+  getCategorie,
+} from "@/lib/categorii";
 import { toDateString, type GraficSnapshot } from "@/lib/types";
 import { orePentruCasuta } from "@/lib/weekendOre";
 
 const DAY_ABBR = ["D", "L", "Ma", "Mi", "J", "V", "S"] as const;
 
-export { buildGraficTitle as buildMonthTitle };
+export { buildGraficTitleFromCategorie as buildMonthTitle };
 
 /** Construiește snapshot PDF din DB (sursă de adevăr) — fără date din browser. */
 export async function buildGraficSnapshotFromDb(
   workspaceId: string,
   an: number,
   luna: number,
-  post: AngajatPost = "asistent",
+  categorieId: string,
   foaie = 1,
 ): Promise<GraficSnapshot> {
   const sql = getDb();
+  const categorie = await getCategorie(workspaceId, categorieId);
+  if (!categorie) {
+    throw new Error("Categorie negăsită");
+  }
+
   const start = `${an}-${String(luna).padStart(2, "0")}-01`;
   const endDate = new Date(Date.UTC(an, luna, 1));
   const end = endDate.toISOString().slice(0, 10);
   const daysInMonth = new Date(an, luna, 0).getDate();
   const [osdRates, footer] = await Promise.all([
-    loadOreOsdRates(workspaceId),
+    loadOreOsdRatesForCategorie(workspaceId, categorieId),
     loadGraficFooter(workspaceId),
   ]);
 
@@ -40,11 +48,11 @@ export async function buildGraficSnapshotFromDb(
   });
 
   const angajatiRows = await sql`
-    SELECT a.id, a.nume, a.post
+    SELECT a.id, a.nume
     FROM angajati a
     WHERE a.workspace_id = ${workspaceId}::uuid
       AND a.activ = true
-      AND COALESCE(a.post, 'asistent') = ${post}
+      AND a.categorie_id = ${categorieId}::uuid
     ORDER BY a.ordine ASC, a.nume ASC
   `;
 
@@ -58,7 +66,7 @@ export async function buildGraficSnapshotFromDb(
     WHERE p.workspace_id = ${workspaceId}::uuid
       AND p.data >= ${start}::date
       AND p.data < ${end}::date
-      AND COALESCE(a.post, 'asistent') = ${post}
+      AND a.categorie_id = ${categorieId}::uuid
       AND p.foaie = ${foaie}
   `;
 
@@ -73,14 +81,19 @@ export async function buildGraficSnapshotFromDb(
   }
 
   return {
-    title: buildGraficTitle(an, luna, post),
+    title: buildGraficTitleFromCategorie(categorie.titluGrafic, an, luna),
     days: days.map(({ day, abbr, weekend }) => ({ day, abbr, weekend })),
     rows: angajatiRows.map((row) => {
       const id = String(row.id);
       const cells = days.map((d) => byStaffDay.get(`${id}|${d.date}`) ?? "");
       let osd = 0;
       for (let i = 0; i < days.length; i++) {
-        osd += orePentruCasuta(post, days[i].abbr, cells[i], osdRates);
+        osd += orePentruCasuta(
+          categorieId,
+          days[i].abbr,
+          cells[i],
+          osdRates,
+        );
       }
       return {
         name: String(row.nume).toUpperCase(),
