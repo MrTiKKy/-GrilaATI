@@ -37,6 +37,8 @@ type SortableStaffRowProps = {
   osdHours?: number;
   /** Nume mai îngust (mobil / săptămână) */
   compactName?: boolean;
+  /** Hex pe cod (tabel coduri); manualul pe celulă are prioritate */
+  culoareByCod?: Record<string, string>;
 };
 
 function GripIcon() {
@@ -93,6 +95,7 @@ export function SortableStaffRow({
   showOsd = true,
   osdHours = 0,
   compactName = false,
+  culoareByCod,
 }: SortableStaffRowProps) {
   const {
     attributes,
@@ -200,6 +203,9 @@ export function SortableStaffRow({
               value={values[col.key]?.valoare ?? ""}
               ciorna={values[col.key]?.ciorna ?? null}
               culoare={values[col.key]?.culoare ?? "black"}
+              codCuloare={
+                culoareByCod?.[values[col.key]?.valoare ?? ""] ?? null
+              }
               active={isActive}
               weekend={weekend}
               onClick={() => {

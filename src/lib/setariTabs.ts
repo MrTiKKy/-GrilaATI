@@ -1,7 +1,7 @@
 export type SetariTabId =
   | "general"
   | "categorii"
-  | "programari"
+  | "coduri"
   | "ore-pe-zile"
   | "foi"
   | "texte-export"
@@ -26,10 +26,10 @@ export const SETARI_TABS: readonly SetariTab[] = [
     enabled: true,
   },
   {
-    id: "programari",
-    label: "Programări",
-    href: "/setari/programari",
-    enabled: false,
+    id: "coduri",
+    label: "Coduri",
+    href: "/setari/coduri",
+    enabled: true,
   },
   {
     id: "ore-pe-zile",

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { writeAudit } from "@/lib/audit";
 import { guardWrite } from "@/lib/apiGuard";
+import { validateProgramareValoare } from "@/lib/coduri";
 import {
   culoareFromDb,
   culoareToDb,
@@ -12,7 +13,6 @@ import { clientKey } from "@/lib/rateLimit";
 import { readJsonLimited } from "@/lib/readJsonLimited";
 import { parseUuid } from "@/lib/validate";
 import {
-  isProgramareValoare,
   isSectieValoare,
   type UpsertProgramareBody,
 } from "@/lib/types";
@@ -41,11 +41,11 @@ export async function PUT(request: Request) {
     }
 
     const foaie = parseFoaie(body.foaie ?? 1) ?? 1;
-
     const sql = getDb();
 
     const angajatCheck = await sql`
-      SELECT id FROM angajati
+      SELECT id, categorie_id::text AS categorie_id
+      FROM angajati
       WHERE id = ${angajatId}::uuid
         AND workspace_id = ${workspaceId}::uuid
         AND activ = true
@@ -54,18 +54,30 @@ export async function PUT(request: Request) {
     if (!angajatCheck[0]) {
       return NextResponse.json({ error: "Angajat negăsit" }, { status: 404 });
     }
+    const categorieId = String(angajatCheck[0].categorie_id);
 
     const valoareRaw =
       body.valoare === null || body.valoare === undefined || body.valoare === ""
         ? null
         : String(body.valoare);
 
-    if (valoareRaw !== null && !isProgramareValoare(valoareRaw)) {
-      return NextResponse.json({ error: "valoare invalidă" }, { status: 400 });
+    if (valoareRaw !== null) {
+      const err = await validateProgramareValoare(
+        workspaceId,
+        categorieId,
+        valoareRaw,
+      );
+      if (err) {
+        return NextResponse.json({ error: err }, { status: 400 });
+      }
     }
 
     let ciorna: string | null = null;
-    if (body.ciorna === null || body.ciorna === "" || body.ciorna === undefined) {
+    if (
+      body.ciorna === null ||
+      body.ciorna === "" ||
+      body.ciorna === undefined
+    ) {
       ciorna = null;
     } else if (isSectieValoare(body.ciorna)) {
       ciorna = body.ciorna;
@@ -146,14 +158,9 @@ export async function PUT(request: Request) {
     });
   } catch (error) {
     console.error("PUT /api/programari", error);
-    const message =
-      error instanceof Error && /foaie/i.test(error.message)
-        ? "Coloana foaie lipsește — rulează sql/add_foi.sql în Neon"
-        : error instanceof Error && /culoare/i.test(error.message)
-          ? "Coloana culoare lipsește — rulează sql/add_culoare.sql în Neon"
-          : error instanceof Error && /ciorna/i.test(error.message)
-            ? "Coloana ciorna lipsește — rulează sql/add_ciorna.sql în Neon"
-            : "Nu s-a putut salva programarea";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json(
+      { error: "Nu s-a putut salva programarea" },
+      { status: 500 },
+    );
   }
 }

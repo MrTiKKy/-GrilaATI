@@ -22,14 +22,28 @@ export function orePentruCasuta(
   dayAbbr: string,
   valoare: string,
   rates: OreOsdRates,
+  comportamentMap?: Record<string, string>,
 ): number {
   if (!isWeekendOsdDay(dayAbbr)) return 0;
   if (!valoare) return 0;
-  if (dayAbbr === "V" && valoare !== "1/3") return 0;
-  const key = oreOsdKey(categorieId, dayAbbr, valoare);
+  const lookup =
+    comportamentMap && Object.keys(comportamentMap).length > 0
+      ? comportamentMap[valoare]
+      : valoare;
+  // Coduri noi / text liber fără comportament_vechi: 0 ore (până la Faza 4)
+  if (
+    comportamentMap &&
+    Object.keys(comportamentMap).length > 0 &&
+    lookup === undefined
+  ) {
+    return 0;
+  }
+  const keyVal = lookup ?? valoare;
+  if (dayAbbr === "V" && keyVal !== "1/3") return 0;
+  const key = oreOsdKey(categorieId, dayAbbr, keyVal);
   const ore = rates[key];
   if (typeof ore === "number" && Number.isFinite(ore)) return ore;
-  const fallback = FALLBACK_RATES[oreOsdKey("__default__", dayAbbr, valoare)];
+  const fallback = FALLBACK_RATES[oreOsdKey("__default__", dayAbbr, keyVal)];
   return typeof fallback === "number" && Number.isFinite(fallback)
     ? fallback
     : 0;
@@ -40,11 +54,18 @@ export function totalOsdOre(
   days: Array<{ abbr: string; key: string }>,
   cells: Record<string, { valoare?: string } | undefined>,
   rates: OreOsdRates,
+  comportamentMap?: Record<string, string>,
 ): number {
   let total = 0;
   for (const day of days) {
     const valoare = cells[day.key]?.valoare ?? "";
-    total += orePentruCasuta(categorieId, day.abbr, valoare, rates);
+    total += orePentruCasuta(
+      categorieId,
+      day.abbr,
+      valoare,
+      rates,
+      comportamentMap,
+    );
   }
   return total;
 }

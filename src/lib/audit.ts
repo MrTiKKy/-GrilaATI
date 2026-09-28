@@ -24,7 +24,12 @@ export type AuditAction =
   | "categorie_create"
   | "categorie_update"
   | "categorie_ordine"
-  | "categorie_delete";
+  | "categorie_delete"
+  | "cod_create"
+  | "cod_update"
+  | "cod_ordine"
+  | "cod_delete"
+  | "categorie_text_liber_update";
 
 export async function writeAudit(params: {
   action: AuditAction;

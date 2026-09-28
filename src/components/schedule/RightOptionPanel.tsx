@@ -13,7 +13,7 @@ import {
   type ProgramareCuloare,
 } from "@/lib/culoare";
 import { SECTIE_VALUES, type SectieValoare } from "@/lib/types";
-
+/** Fallback hardcoded options — used when codes haven't loaded yet */
 export const CELL_OPTIONS = [
   { value: "", label: "Gol" },
   { value: "-", label: "-" },
@@ -26,6 +26,12 @@ export const CELL_OPTIONS = [
   { value: "CM", label: "CM" },
   { value: "CIC", label: "CIC" },
 ] as const;
+
+export type CellOptionItem = {
+  value: string;
+  label: string;
+  culoare?: string;
+};
 
 export type PanelContext = {
   personName: string;
@@ -48,6 +54,10 @@ type CellOptionPopupProps = {
   /** Salvare imediată la selectare (fără Confirmă) */
   onSelect: (payload: ConfirmPayload) => boolean | void | Promise<boolean | void>;
   onClose: () => void;
+  /** Dynamic code options from API (faza 3); falls back to CELL_OPTIONS if empty */
+  cellOptions?: CellOptionItem[];
+  /** Whether free text input is allowed for this category */
+  permiteTextLiber?: boolean;
 };
 
 const GAP = 8;
@@ -92,6 +102,8 @@ export function CellOptionPopup({
   context,
   onSelect,
   onClose,
+  cellOptions,
+  permiteTextLiber,
 }: CellOptionPopupProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
@@ -103,16 +115,33 @@ export function CellOptionPopup({
     context?.currentCuloare ?? "black",
   );
   const [saving, setSaving] = useState(false);
+  const [freeTextMode, setFreeTextMode] = useState(false);
+  const [freeTextValue, setFreeTextValue] = useState("");
+  const freeTextRef = useRef<HTMLInputElement>(null);
 
   const cellKey = context
     ? `${context.personName}::${context.columnLabel}`
     : "none";
+
+  // Build options list from cellOptions or fallback
+  const options = cellOptions && cellOptions.length > 0
+    ? [
+        { value: "", label: "Gol", codCuloare: null as string | null },
+        ...cellOptions.map((c) => ({
+          value: c.value,
+          label: c.label,
+          codCuloare: c.culoare ?? null,
+        })),
+      ]
+    : CELL_OPTIONS.map((o) => ({ ...o, codCuloare: null as string | null }));
 
   useEffect(() => {
     if (!context) return;
     setDraft(context.currentValue);
     setSectie(context.currentCiorna);
     setCuloare(context.currentCuloare ?? "black");
+    setFreeTextMode(false);
+    setFreeTextValue("");
     // eslint-disable-next-line react-hooks/exhaustive-deps -- cellKey
   }, [cellKey]);
 
@@ -125,7 +154,7 @@ export function CellOptionPopup({
     if (!anchorEl || !panel) return;
 
     const anchor = anchorEl.getBoundingClientRect();
-    const popupH = panel.offsetHeight || 320;
+    const popupH = panel.offsetHeight || 380;
     const popupW = Math.min(POPUP_W, panel.offsetWidth || POPUP_W);
     setPos(computePosition(anchor, popupW, popupH));
   }, [open]);
@@ -204,6 +233,7 @@ export function CellOptionPopup({
   }
 
   function pickValoare(value: string) {
+    setFreeTextMode(false);
     void commit({ valoare: value, ciorna: sectie, culoare });
   }
 
@@ -214,6 +244,19 @@ export function CellOptionPopup({
 
   function pickCuloare(next: ProgramareCuloare) {
     void commit({ valoare: draft, ciorna: sectie, culoare: next });
+  }
+
+  function submitFreeText() {
+    const trimmed = freeTextValue.trim();
+    if (!trimmed || trimmed.length > 6) return;
+    setFreeTextMode(false);
+    void commit({ valoare: trimmed, ciorna: sectie, culoare });
+  }
+
+  function enterFreeTextMode() {
+    setFreeTextMode(true);
+    setFreeTextValue(draft);
+    requestAnimationFrame(() => freeTextRef.current?.focus());
   }
 
   if (!open || !context) return null;
@@ -291,11 +334,11 @@ export function CellOptionPopup({
         Schimb
       </p>
       <div className="mb-2 grid grid-cols-4 gap-1">
-        {CELL_OPTIONS.map((opt) => {
+        {options.map((opt) => {
           const selected = draft === opt.value;
           return (
             <button
-              key={opt.label}
+              key={opt.value || "__empty"}
               type="button"
               disabled={saving}
               onClick={() => pickValoare(opt.value)}
@@ -306,12 +349,63 @@ export function CellOptionPopup({
                   ? "border-sky-500 bg-sky-50 text-sky-800"
                   : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50",
               ].join(" ")}
+              style={
+                opt.codCuloare && opt.value
+                  ? { color: opt.codCuloare }
+                  : undefined
+              }
             >
               {opt.label}
             </button>
           );
         })}
       </div>
+
+      {/* Free text entry */}
+      {permiteTextLiber && (
+        <div className="mb-2">
+          {freeTextMode ? (
+            <div className="flex gap-1">
+              <input
+                ref={freeTextRef}
+                type="text"
+                maxLength={6}
+                value={freeTextValue}
+                onChange={(e) => setFreeTextValue(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    submitFreeText();
+                  }
+                  if (e.key === "Escape") {
+                    e.preventDefault();
+                    setFreeTextMode(false);
+                  }
+                }}
+                placeholder="Max 6 car."
+                className="flex-1 rounded-lg border border-slate-200 px-2 py-1.5 text-xs outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-400/20"
+              />
+              <button
+                type="button"
+                disabled={saving || !freeTextValue.trim() || freeTextValue.trim().length > 6}
+                onClick={submitFreeText}
+                className="rounded-lg border border-sky-500 bg-sky-50 px-2 py-1.5 text-xs font-semibold text-sky-800 hover:bg-sky-100 disabled:opacity-50"
+              >
+                OK
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              disabled={saving}
+              onClick={enterFreeTextMode}
+              className="w-full rounded-lg border border-dashed border-slate-300 bg-slate-50 px-2 py-1.5 text-xs font-medium text-slate-600 hover:border-sky-400 hover:bg-sky-50 hover:text-sky-800 disabled:opacity-50"
+            >
+              Text liber…
+            </button>
+          )}
+        </div>
+      )}
 
       <p className="draft-only mb-1 text-[10px] font-medium tracking-wide text-slate-500 uppercase">
         Secție
