@@ -12,7 +12,7 @@ Programare lunară ATI/anestezie — Next.js App Router + Neon Postgres (`@neond
 2. Seed user **doar pe branch**:
 
 ```bash
-node --env-file=.env.local scripts/seed-user.mjs emailul-tau@domeniu.ro 'ParolaTa'
+node --env-file=.env scripts/seed-user.mjs emailul-tau@domeniu.ro 'ParolaTa'
 ```
 
 3. Workspaces (multi-tenant) — pe branch Neon:
