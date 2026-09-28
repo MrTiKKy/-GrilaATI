@@ -161,8 +161,9 @@ BEGIN
   END IF;
 END $$;
 
--- post: scoate CHECK + NOT NULL (valorile existente rămân; rânduri noi pot avea NULL)
+-- post: scoate CHECK + NOT NULL + DEFAULT (valorile existente rămân; rânduri noi pot avea NULL)
 ALTER TABLE angajati DROP CONSTRAINT IF EXISTS angajati_post_check;
+ALTER TABLE angajati ALTER COLUMN post DROP DEFAULT;
 ALTER TABLE angajati ALTER COLUMN post DROP NOT NULL;
 ALTER TABLE luna_foi DROP CONSTRAINT IF EXISTS luna_foi_post_check;
 ALTER TABLE luna_foi ALTER COLUMN post DROP NOT NULL;
