@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { guardRead, isGuardError } from "@/lib/apiGuard";
 import { culoareFromDb } from "@/lib/culoare";
-import { ensureLunaFoi } from "@/lib/foi";
+import { listLunaFoi } from "@/lib/foi";
 import { resolveCategorieId } from "@/lib/categorii";
 import { parseFoaieParam, parseMonth, parseYear } from "@/lib/validate";
 import {
@@ -51,7 +51,8 @@ export async function GET(request: Request) {
     const endDate = new Date(Date.UTC(an, luna, 1));
     const end = endDate.toISOString().slice(0, 10);
 
-    const foi = await ensureLunaFoi(workspaceId, an, luna, categorie.id);
+    const foiItems = await listLunaFoi(workspaceId, an, luna, categorie.id);
+    const foi = foiItems.map((i) => i.foaie);
     const foaie =
       foaieRaw && foi.includes(foaieRaw) ? foaieRaw : (foi[0] ?? 1);
 
@@ -136,6 +137,7 @@ export async function GET(request: Request) {
       angajati,
       programari,
       foi,
+      foiItems,
       foaie,
     };
     return NextResponse.json(body);

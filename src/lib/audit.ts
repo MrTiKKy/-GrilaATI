@@ -21,6 +21,7 @@ export type AuditAction =
   | "grafic_footer_update"
   | "foaie_create"
   | "foaie_delete"
+  | "foaie_rename"
   | "setari_general_update"
   | "categorie_create"
   | "categorie_update"

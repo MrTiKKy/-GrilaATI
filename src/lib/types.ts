@@ -46,6 +46,8 @@ export type LunaResponse = {
   programari: ProgramareDto[];
   /** Foi existente pentru categoria cerută */
   foi?: number[];
+  /** Foi cu nume/etichetă (faza 5) */
+  foiItems?: Array<{ foaie: number; nume: string | null; label: string }>;
   /** Foaia curentă */
   foaie?: number;
 };

@@ -7,6 +7,7 @@ import {
 } from "@/lib/buildGraficSnapshot";
 import { getCategorie } from "@/lib/categorii";
 import { getDb } from "@/lib/db";
+import { foaieTitleSuffix, getFoaieNume } from "@/lib/foi";
 import { clientKey } from "@/lib/rateLimit";
 import { readJsonLimited } from "@/lib/readJsonLimited";
 import { parseMonth, parseYear } from "@/lib/validate";
@@ -138,12 +139,25 @@ export async function POST(request: Request) {
       foaie,
     );
     const titluBase = buildMonthTitle(categorie.titluGrafic, an, luna);
-    const titlu = foaie > 1 ? `${titluBase} · Sheet ${foaie}` : titluBase;
+    const foaieNume = await getFoaieNume(
+      workspaceId,
+      an,
+      luna,
+      categorieId,
+      foaie,
+    );
+    const suffix = foaieTitleSuffix(foaie, foaieNume);
+    const titlu = suffix ? `${titluBase} · ${suffix}` : titluBase;
+    // PDF/Excel/DOCX: adaugă numele doar când e custom (înainte foaia nu apărea în titlul snapshot).
+    const custom = typeof foaieNume === "string" ? foaieNume.trim() : "";
+    const snapshotOut = custom
+      ? { ...snapshot, title: `${snapshot.title} · ${custom}` }
+      : snapshot;
 
     const sql = getDb();
     const inserted = await sql`
       INSERT INTO grafice_finale (workspace_id, an, luna, titlu, snapshot)
-      VALUES (${workspaceId}::uuid, ${an}, ${luna}, ${titlu}, ${JSON.stringify(snapshot)}::jsonb)
+      VALUES (${workspaceId}::uuid, ${an}, ${luna}, ${titlu}, ${JSON.stringify(snapshotOut)}::jsonb)
       RETURNING id, an, luna, titlu, created_at
     `;
 
@@ -160,7 +174,7 @@ export async function POST(request: Request) {
         luna,
         categorieId,
         foaie,
-        rows: snapshot.rows.length,
+        rows: snapshotOut.rows.length,
       },
       ip: clientKey(request),
       userId: user.userId,
@@ -179,7 +193,7 @@ export async function POST(request: Request) {
               ? row.created_at.toISOString()
               : String(row.created_at),
         },
-        snapshot,
+        snapshot: snapshotOut,
       },
       { status: 201 },
     );

@@ -26,6 +26,7 @@ import {
   type KeyboardEvent,
   type TouchEvent,
 } from "react";
+import { foaieFileSuffix, numeFoaie } from "@/lib/foiNume";
 import type { CreateAngajatResponse, LunaResponse } from "@/lib/types";
 import {
   culoareFromDb,
@@ -375,7 +376,14 @@ export function ScheduleGrid({
     GRAFIC_FOOTER_DEFAULTS,
   );
   const [foi, setFoi] = useState<number[]>([1]);
+  const [foiItems, setFoiItems] = useState<
+    Array<{ foaie: number; nume: string | null; label: string }>
+  >([{ foaie: 1, nume: null, label: "Sheet 1" }]);
   const [creatingFoaie, setCreatingFoaie] = useState(false);
+  const [renamingFoaie, setRenamingFoaie] = useState<number | null>(null);
+  const [renameDraft, setRenameDraft] = useState("");
+  const renameInputRef = useRef<HTMLInputElement>(null);
+  const renameCancelRef = useRef(false);
   const [deletingFoaie, setDeletingFoaie] = useState(false);
   const gridRef = useRef<HTMLDivElement>(null);
   const statusTimer = useRef<number | null>(null);
@@ -472,6 +480,17 @@ export function ScheduleGrid({
         const nextFoi =
           data.foi && data.foi.length > 0 ? data.foi : [1];
         setFoi(nextFoi);
+        if (data.foiItems && data.foiItems.length > 0) {
+          setFoiItems(data.foiItems);
+        } else {
+          setFoiItems(
+            nextFoi.map((n) => ({
+              foaie: n,
+              nume: null,
+              label: numeFoaie(n, null),
+            })),
+          );
+        }
         // Dacă foaia din URL nu există, du-te pe prima
         if (data.foaie && data.foaie !== foaie) {
           router.replace(
@@ -509,9 +528,24 @@ export function ScheduleGrid({
         body: JSON.stringify({ an: year, luna: month, categorieId }),
       });
       if (!res.ok) throw new Error(await readError(res));
-      const data = (await res.json()) as { foaie: number; foi: number[] };
+      const data = (await res.json()) as {
+        foaie: number;
+        foi: number[];
+        foiItems?: Array<{ foaie: number; nume: string | null; label: string }>;
+      };
       setFoi(data.foi);
-      flashStatus(`Sheet ${data.foaie} creat`);
+      if (data.foiItems) {
+        setFoiItems(data.foiItems);
+      } else {
+        setFoiItems(
+          data.foi.map((n) => ({
+            foaie: n,
+            nume: null,
+            label: numeFoaie(n, null),
+          })),
+        );
+      }
+      flashStatus(`${numeFoaie(data.foaie, null)} creat`);
       router.push(
         `${pathname}?${buildMonthQuery(year, month, categorieId!, data.foaie)}`,
         { scroll: false },
@@ -543,14 +577,16 @@ export function ScheduleGrid({
       return;
     }
 
+    const foaieLabel =
+      foiItems.find((i) => i.foaie === foaie)?.label ?? numeFoaie(foaie, null);
     const hasData = currentFoaieHasData();
     if (hasData) {
       const ok = window.confirm(
-        `Sheet ${foaie} are programări completate.\n\nȘtergi definitiv foaia și toate casuțele de pe ea?\n\nAcțiunea nu poate fi anulată.`,
+        `${foaieLabel} are programări completate.\n\nȘtergi definitiv foaia și toate casuțele de pe ea?\n\nAcțiunea nu poate fi anulată.`,
       );
       if (!ok) return;
     } else {
-      const ok = window.confirm(`Ștergi Sheet ${foaie}?`);
+      const ok = window.confirm(`Ștergi ${foaieLabel}?`);
       if (!ok) return;
     }
 
@@ -578,7 +614,7 @@ export function ScheduleGrid({
           };
           if (data.needsConfirm) {
             const ok = window.confirm(
-              `Sheet ${foaie} are ${data.filled ?? "mai multe"} programări.\n\nȘtergi definitiv foaia?\n\nAcțiunea nu poate fi anulată.`,
+              `${foaieLabel} are ${data.filled ?? "mai multe"} programări.\n\nȘtergi definitiv foaia?\n\nAcțiunea nu poate fi anulată.`,
             );
             if (!ok) return;
             const res2 = await fetch("/api/foi", {
@@ -596,9 +632,24 @@ export function ScheduleGrid({
             const data2 = (await res2.json()) as {
               foi: number[];
               nextFoaie: number;
+              foiItems?: Array<{
+                foaie: number;
+                nume: string | null;
+                label: string;
+              }>;
             };
             setFoi(data2.foi);
-            flashStatus(`Sheet ${foaie} șters`);
+            if (data2.foiItems) setFoiItems(data2.foiItems);
+            else {
+              setFoiItems(
+                data2.foi.map((n) => ({
+                  foaie: n,
+                  nume: null,
+                  label: numeFoaie(n, null),
+                })),
+              );
+            }
+            flashStatus(`${foaieLabel} șters`);
             router.push(
               `${pathname}?${buildMonthQuery(year, month, categorieId!, data2.nextFoaie)}`,
               { scroll: false },
@@ -611,9 +662,24 @@ export function ScheduleGrid({
       const data = (await res.json()) as {
         foi: number[];
         nextFoaie: number;
+        foiItems?: Array<{
+          foaie: number;
+          nume: string | null;
+          label: string;
+        }>;
       };
       setFoi(data.foi);
-      flashStatus(`Sheet ${foaie} șters`);
+      if (data.foiItems) setFoiItems(data.foiItems);
+      else {
+        setFoiItems(
+          data.foi.map((n) => ({
+            foaie: n,
+            nume: null,
+            label: numeFoaie(n, null),
+          })),
+        );
+      }
+      flashStatus(`${foaieLabel} șters`);
       router.push(
         `${pathname}?${buildMonthQuery(year, month, categorieId!, data.nextFoaie)}`,
         { scroll: false },
@@ -622,6 +688,74 @@ export function ScheduleGrid({
       setError(e instanceof Error ? e.message : "Nu s-a putut șterge foaia");
     } finally {
       setDeletingFoaie(false);
+    }
+  }
+
+  function startRenameFoaie(n: number) {
+    if (loading || renamingFoaie !== null) return;
+    const item = foiItems.find((i) => i.foaie === n);
+    renameCancelRef.current = false;
+    setRenamingFoaie(n);
+    setRenameDraft(item?.nume ?? "");
+    requestAnimationFrame(() => {
+      renameInputRef.current?.focus();
+      renameInputRef.current?.select();
+    });
+  }
+
+  function cancelRenameFoaie() {
+    renameCancelRef.current = true;
+    setRenamingFoaie(null);
+    setRenameDraft("");
+  }
+
+  async function commitRenameFoaie() {
+    if (renameCancelRef.current) {
+      renameCancelRef.current = false;
+      return;
+    }
+    if (renamingFoaie === null || !categorieId) return;
+    const n = renamingFoaie;
+    const draft = renameDraft;
+    setRenamingFoaie(null);
+    setRenameDraft("");
+    setError(null);
+    try {
+      const res = await fetch("/api/foi", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          an: year,
+          luna: month,
+          categorieId,
+          foaie: n,
+          nume: draft.trim() === "" ? null : draft,
+        }),
+      });
+      if (!res.ok) throw new Error(await readError(res));
+      const data = (await res.json()) as {
+        foiItems?: Array<{ foaie: number; nume: string | null; label: string }>;
+        item?: { foaie: number; nume: string | null; label: string };
+      };
+      if (data.foiItems) {
+        setFoiItems(data.foiItems);
+        setFoi(data.foiItems.map((i) => i.foaie));
+      } else if (data.item) {
+        setFoiItems((prev) =>
+          prev.map((i) => (i.foaie === data.item!.foaie ? data.item! : i)),
+        );
+      }
+      const label =
+        data.item?.label ??
+        data.foiItems?.find((i) => i.foaie === n)?.label ??
+        numeFoaie(n, draft.trim() || null);
+      flashStatus(
+        draft.trim() === ""
+          ? `Nume resetat: ${label}`
+          : `Redenumit: ${label}`,
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Nu s-a putut redenumi foaia");
     }
   }
 
@@ -769,7 +903,10 @@ export function ScheduleGrid({
         month,
         activeCategorie?.nume ?? "grafic",
         format,
-        foaie > 1 ? `sheet${foaie}` : "",
+        foaieFileSuffix(
+          foaie,
+          foiItems.find((i) => i.foaie === foaie)?.nume ?? null,
+        ),
       );
       await downloadGraficExport(saved.snapshot, fileName, format);
       flashStatus(
@@ -1370,14 +1507,61 @@ export function ScheduleGrid({
         </div>
 
         <div className="mt-2 flex flex-wrap items-end gap-0.5 border-b border-slate-200">
-          {foi.map((n) => {
+          {(foiItems.length > 0
+            ? foiItems
+            : foi.map((n) => ({
+                foaie: n,
+                nume: null as string | null,
+                label: numeFoaie(n, null),
+              }))
+          ).map((item) => {
+            const n = item.foaie;
             const activeSheet = n === foaie;
+            const isRenaming = renamingFoaie === n;
+            if (isRenaming) {
+              return (
+                <form
+                  key={n}
+                  className={[
+                    "rounded-t-lg border border-b-0 px-1.5 py-1",
+                    activeSheet
+                      ? "relative z-[1] -mb-px border-slate-300 bg-white"
+                      : "border-transparent bg-slate-100",
+                  ].join(" ")}
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    void commitRenameFoaie();
+                  }}
+                >
+                  <input
+                    ref={renameInputRef}
+                    value={renameDraft}
+                    onChange={(e) => setRenameDraft(e.target.value)}
+                    onBlur={() => void commitRenameFoaie()}
+                    onKeyDown={(e) => {
+                      if (e.key === "Escape") {
+                        e.preventDefault();
+                        cancelRenameFoaie();
+                      }
+                    }}
+                    maxLength={40}
+                    aria-label="Nume foaie"
+                    className="w-28 rounded border border-sky-300 bg-white px-1.5 py-0.5 text-sm text-sky-900 outline-none focus:ring-1 focus:ring-sky-400"
+                  />
+                </form>
+              );
+            }
             return (
               <button
                 key={n}
                 type="button"
                 disabled={loading}
                 onClick={() => setFoaieTab(n)}
+                onDoubleClick={(e) => {
+                  e.preventDefault();
+                  startRenameFoaie(n);
+                }}
+                title="Dublu-click pentru redenumire"
                 className={[
                   "rounded-t-lg border border-b-0 px-3.5 py-2 text-sm font-medium transition-colors duration-150",
                   activeSheet
@@ -1385,7 +1569,7 @@ export function ScheduleGrid({
                     : "border-transparent bg-slate-100 text-slate-600 hover:bg-slate-200/80 hover:text-slate-800",
                 ].join(" ")}
               >
-                Sheet {n}
+                {item.label}
               </button>
             );
           })}
@@ -1405,11 +1589,19 @@ export function ScheduleGrid({
             title={
               foi.length <= 1
                 ? "Nu poți șterge singura foaie"
-                : `Șterge Sheet ${foaie} (foaia curentă)`
+                : `Șterge ${
+                    foiItems.find((i) => i.foaie === foaie)?.label ??
+                    numeFoaie(foaie, null)
+                  } (foaia curentă)`
             }
             className="mb-0.5 ml-1 rounded-lg border border-rose-200 bg-white px-2.5 py-1.5 text-sm font-medium text-rose-700 transition-colors hover:border-rose-300 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            {deletingFoaie ? "…" : `Șterge Sheet ${foaie}`}
+            {deletingFoaie
+              ? "…"
+              : `Șterge ${
+                  foiItems.find((i) => i.foaie === foaie)?.label ??
+                  numeFoaie(foaie, null)
+                }`}
           </button>
         </div>
 

@@ -1,10 +1,20 @@
 import { getDb } from "@/lib/db";
+import { numeFoaie } from "@/lib/foiNume";
 
-export function parseFoaie(value: unknown): number | null {
-  const n = typeof value === "number" ? value : Number(value);
-  if (!Number.isInteger(n) || n < 1 || n > 50) return null;
-  return n;
-}
+export {
+  numeFoaie,
+  numeFoaieImplicit,
+  foaieTitleSuffix,
+  foaieFileSuffix,
+  parseFoaie,
+  parseFoaieNumeInput,
+} from "@/lib/foiNume";
+
+export type FoaieItem = {
+  foaie: number;
+  nume: string | null;
+  label: string;
+};
 
 async function postVechiForCategorie(
   workspaceId: string,
@@ -29,6 +39,16 @@ export async function ensureLunaFoi(
   luna: number,
   categorieId: string,
 ): Promise<number[]> {
+  const items = await listLunaFoi(workspaceId, an, luna, categorieId);
+  return items.map((i) => i.foaie);
+}
+
+export async function listLunaFoi(
+  workspaceId: string,
+  an: number,
+  luna: number,
+  categorieId: string,
+): Promise<FoaieItem[]> {
   const sql = getDb();
   const post = await postVechiForCategorie(workspaceId, categorieId);
   await sql`
@@ -37,13 +57,102 @@ export async function ensureLunaFoi(
     ON CONFLICT DO NOTHING
   `;
   const rows = await sql`
-    SELECT foaie
+    SELECT foaie, nume
     FROM luna_foi
     WHERE workspace_id = ${workspaceId}::uuid
       AND an = ${an} AND luna = ${luna} AND categorie_id = ${categorieId}::uuid
     ORDER BY foaie ASC
   `;
-  return rows.map((r) => Number(r.foaie));
+  return rows.map((r) => {
+    const foaie = Number(r.foaie);
+    const nume =
+      r.nume === null || r.nume === undefined || String(r.nume).trim() === ""
+        ? null
+        : String(r.nume);
+    return { foaie, nume, label: numeFoaie(foaie, nume) };
+  });
+}
+
+export async function getFoaieNume(
+  workspaceId: string,
+  an: number,
+  luna: number,
+  categorieId: string,
+  foaie: number,
+): Promise<string | null> {
+  const sql = getDb();
+  const rows = await sql`
+    SELECT nume
+    FROM luna_foi
+    WHERE workspace_id = ${workspaceId}::uuid
+      AND an = ${an} AND luna = ${luna}
+      AND categorie_id = ${categorieId}::uuid
+      AND foaie = ${foaie}
+    LIMIT 1
+  `;
+  if (!rows[0]) return null;
+  const n = rows[0].nume;
+  if (n === null || n === undefined || String(n).trim() === "") return null;
+  return String(n);
+}
+
+export async function renameFoaie(
+  workspaceId: string,
+  an: number,
+  luna: number,
+  categorieId: string,
+  foaie: number,
+  nume: string | null,
+): Promise<{ before: string | null; after: string | null }> {
+  const sql = getDb();
+  await ensureLunaFoi(workspaceId, an, luna, categorieId);
+
+  const current = await sql`
+    SELECT nume
+    FROM luna_foi
+    WHERE workspace_id = ${workspaceId}::uuid
+      AND an = ${an} AND luna = ${luna}
+      AND categorie_id = ${categorieId}::uuid
+      AND foaie = ${foaie}
+    LIMIT 1
+  `;
+  if (!current[0]) {
+    throw new Error("Foaia nu există");
+  }
+  const before =
+    current[0].nume === null || current[0].nume === undefined
+      ? null
+      : String(current[0].nume);
+
+  if (nume !== null) {
+    const dup = await sql`
+      SELECT foaie
+      FROM luna_foi
+      WHERE workspace_id = ${workspaceId}::uuid
+        AND an = ${an} AND luna = ${luna}
+        AND categorie_id = ${categorieId}::uuid
+        AND foaie <> ${foaie}
+        AND nume IS NOT NULL
+        AND lower(btrim(nume)) = lower(${nume})
+      LIMIT 1
+    `;
+    if (dup[0]) {
+      const err = new Error("Există deja o foaie cu acest nume în lună");
+      (err as Error & { code?: string }).code = "DUPLICATE_NAME";
+      throw err;
+    }
+  }
+
+  await sql`
+    UPDATE luna_foi
+    SET nume = ${nume}
+    WHERE workspace_id = ${workspaceId}::uuid
+      AND an = ${an} AND luna = ${luna}
+      AND categorie_id = ${categorieId}::uuid
+      AND foaie = ${foaie}
+  `;
+
+  return { before, after: nume };
 }
 
 export async function createNextFoaie(
