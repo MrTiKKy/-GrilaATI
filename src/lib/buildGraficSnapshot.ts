@@ -5,6 +5,10 @@ import {
   buildGraficTitleFromCategorie,
   getCategorie,
 } from "@/lib/categorii";
+import {
+  comportamentMapFromCoduri,
+  listCoduriForCategorie,
+} from "@/lib/coduri";
 import { toDateString, type GraficSnapshot } from "@/lib/types";
 import { orePentruCasuta } from "@/lib/weekendOre";
 
@@ -30,10 +34,12 @@ export async function buildGraficSnapshotFromDb(
   const endDate = new Date(Date.UTC(an, luna, 1));
   const end = endDate.toISOString().slice(0, 10);
   const daysInMonth = new Date(an, luna, 0).getDate();
-  const [osdRates, footer] = await Promise.all([
+  const [osdRates, footer, coduri] = await Promise.all([
     loadOreOsdRatesForCategorie(workspaceId, categorieId),
     loadGraficFooter(workspaceId),
+    listCoduriForCategorie(workspaceId, categorieId, { onlyActive: false }),
   ]);
+  const comportamentMap = comportamentMapFromCoduri(coduri);
 
   const days = Array.from({ length: daysInMonth }, (_, i) => {
     const day = i + 1;
@@ -93,6 +99,7 @@ export async function buildGraficSnapshotFromDb(
           days[i].abbr,
           cells[i],
           osdRates,
+          comportamentMap,
         );
       }
       return {

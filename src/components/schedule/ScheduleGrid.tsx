@@ -33,6 +33,7 @@ import {
 } from "@/lib/culoare";
 import { buildGraficTitleFromCategorie } from "@/lib/categorii";
 import { parseMonth, parseYear, parseFoaieParam } from "@/lib/validate";
+import type { CodOption } from "@/lib/coduri";
 import { AddStaffDialog } from "./AddStaffDialog";
 import { CellFocus } from "./CellFocus";
 import {
@@ -930,6 +931,16 @@ export function ScheduleGrid({
     : null;
 
   const [osdRates, setOsdRates] = useState<OreOsdRates>({});
+  const [cellOptions, setCellOptions] = useState<
+    Array<{ value: string; label: string; culoare?: string }>
+  >([]);
+  const [permiteTextLiber, setPermiteTextLiber] = useState(false);
+  const [comportamentMap, setComportamentMap] = useState<
+    Record<string, string>
+  >({});
+  const [culoareByCod, setCuloareByCod] = useState<Record<string, string>>(
+    {},
+  );
 
   useEffect(() => {
     if (typeof categorieId !== "string") return;
@@ -952,7 +963,56 @@ export function ScheduleGrid({
         /* păstrează defaults */
       }
     }
+    async function loadCoduri() {
+      try {
+        const res = await fetch(
+          `/api/coduri?categorie=${encodeURIComponent(cid)}`,
+        );
+        if (!res.ok) return;
+        const data = (await res.json()) as {
+          items: Array<{
+            cod: string;
+            eticheta: string;
+            culoare: string;
+            comportamentVechi: string | null;
+          }>;
+          permiteTextLiber: boolean;
+          culoareByCod?: Record<string, string>;
+          comportamentMap?: Record<string, string>;
+        };
+        if (cancelled) return;
+        setCellOptions(
+          (data.items ?? []).map((c) => ({
+            value: c.cod,
+            label: c.eticheta || c.cod,
+            culoare: c.culoare,
+          })),
+        );
+        setPermiteTextLiber(Boolean(data.permiteTextLiber));
+        if (data.culoareByCod) {
+          setCuloareByCod(data.culoareByCod);
+        } else {
+          const colors: Record<string, string> = {};
+          for (const c of data.items ?? []) {
+            colors[c.cod] = c.culoare;
+          }
+          setCuloareByCod(colors);
+        }
+        if (data.comportamentMap) {
+          setComportamentMap(data.comportamentMap);
+        } else {
+          const map: Record<string, string> = {};
+          for (const c of data.items ?? []) {
+            map[c.cod] = c.comportamentVechi || c.cod;
+          }
+          setComportamentMap(map);
+        }
+      } catch {
+        /* keep previous */
+      }
+    }
     void loadRates();
+    void loadCoduri();
     return () => {
       cancelled = true;
     };
@@ -992,11 +1052,12 @@ export function ScheduleGrid({
           osdDays,
           grid[person.id] ?? {},
           osdRates,
+          comportamentMap,
         ),
       );
     }
     return map;
-  }, [staff, osdDays, grid, osdRates, categorieId]);
+  }, [staff, osdDays, grid, osdRates, categorieId, comportamentMap]);
 
   const titleMonth = monthLabel(year, monthIndex);
 
@@ -1283,6 +1344,7 @@ export function ScheduleGrid({
                         showOsd={isDesktop}
                         osdHours={osdByStaffId.get(person.id) ?? 0}
                         compactName={!isDesktop}
+                        culoareByCod={culoareByCod}
                       />
                     ))
                   )}
@@ -1307,6 +1369,11 @@ export function ScheduleGrid({
                           ciorna={grid[draggingStaff.id]?.[col.key]?.ciorna ?? null}
                           culoare={
                             grid[draggingStaff.id]?.[col.key]?.culoare ?? "black"
+                          }
+                          codCuloare={
+                            culoareByCod[
+                              grid[draggingStaff.id]?.[col.key]?.valoare ?? ""
+                            ] ?? null
                           }
                           active={false}
                           weekend={col.weekend}
@@ -1432,6 +1499,8 @@ export function ScheduleGrid({
       <CellOptionPopup
         open={panelOpen && !!panelContext}
         context={panelContext}
+        cellOptions={cellOptions}
+        permiteTextLiber={permiteTextLiber}
         onSelect={(payload) => confirmCell(payload)}
         onClose={() => {
           setPanelOpen(false);

@@ -8,6 +8,8 @@ type CellFocusProps = {
   value: string;
   ciorna?: SectieValoare | null;
   culoare?: ProgramareCuloare | null;
+  /** Hex din tabelul coduri; manualul (non-black) are prioritate */
+  codCuloare?: string | null;
   active: boolean;
   weekend?: boolean;
   onClick: () => void;
@@ -17,12 +19,14 @@ export function CellFocus({
   value,
   ciorna,
   culoare,
+  codCuloare,
   active,
   weekend,
   onClick,
 }: CellFocusProps) {
   const sectie = ciorna === "A" || ciorna === "R" ? ciorna : null;
-  const color = culoareHex(culoare);
+  const manual = culoare && culoare !== "black" ? culoareHex(culoare) : null;
+  const color = manual || codCuloare || culoareHex("black");
 
   const activeRing: CSSProperties | undefined = active
     ? { boxShadow: "inset 0 0 0 2px rgb(14 165 233)" }

@@ -140,6 +140,11 @@ export function isProgramareValoare(v: string): v is ProgramareValoare {
   return (PROGRAMARE_VALUES as readonly string[]).includes(v);
 }
 
+/** Legacy check kept for backward compat; faza 3 also validates against coduri table */
+export function isLegacyProgramareValoare(v: string): boolean {
+  return (PROGRAMARE_VALUES as readonly string[]).includes(v);
+}
+
 export function isSectieValoare(v: string): v is SectieValoare {
   return (SECTIE_VALUES as readonly string[]).includes(v);
 }
