@@ -1,7 +1,15 @@
 import { Suspense } from "react";
+import { cookies } from "next/headers";
 import { ScheduleGrid } from "@/components/schedule/ScheduleGrid";
+import { SESSION_COOKIE, readSessionPayload } from "@/lib/auth";
+import { getActiveWorkspace } from "@/lib/workspace";
 
-export default function Home() {
+export default async function Home() {
+  const jar = await cookies();
+  const user = await readSessionPayload(jar.get(SESSION_COOKIE)?.value);
+  const ws = user ? await getActiveWorkspace(user.userId) : null;
+  const showSetari = Boolean(ws?.poateModificaSetari);
+
   return (
     <main className="min-h-full flex-1 bg-slate-100 py-2 sm:py-4">
       <Suspense
@@ -11,7 +19,7 @@ export default function Home() {
           </div>
         }
       >
-        <ScheduleGrid />
+        <ScheduleGrid showSetari={showSetari} />
       </Suspense>
     </main>
   );

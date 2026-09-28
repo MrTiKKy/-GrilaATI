@@ -211,7 +211,11 @@ async function readError(res: Response): Promise<string> {
   }
 }
 
-export function ScheduleGrid() {
+export function ScheduleGrid({
+  showSetari = false,
+}: {
+  showSetari?: boolean;
+}) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -1011,6 +1015,14 @@ export function ScheduleGrid() {
             >
               Zile CO →
             </Link>
+            {showSetari && (
+              <Link
+                href="/setari"
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-center text-sm font-medium text-slate-700 transition-colors duration-150 hover:border-sky-300 hover:bg-sky-50 hover:text-sky-800 sm:w-auto sm:py-2"
+              >
+                Setări →
+              </Link>
+            )}
           </div>
         </header>
 

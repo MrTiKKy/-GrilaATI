@@ -19,7 +19,8 @@ export type AuditAction =
   | "ore_osd_update"
   | "grafic_footer_update"
   | "foaie_create"
-  | "foaie_delete";
+  | "foaie_delete"
+  | "setari_general_update";
 
 export async function writeAudit(params: {
   action: AuditAction;

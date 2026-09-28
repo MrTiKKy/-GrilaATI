@@ -17,6 +17,8 @@ export type GuardContext = {
   user: SessionPayload;
   workspaceId: string;
   rol: WorkspaceRole;
+  isOwner: boolean;
+  poateModificaSetari: boolean;
 };
 
 export async function requireSession(): Promise<NextResponse | null> {
@@ -107,6 +109,8 @@ async function resolveGuardContext(
     user: session.user,
     workspaceId: ws.workspaceId,
     rol: ws.rol,
+    isOwner: ws.isOwner,
+    poateModificaSetari: ws.poateModificaSetari,
   };
 }
 
@@ -132,6 +136,30 @@ export async function guardRead(
     windowMs: 60_000,
     write: false,
   });
+}
+
+/**
+ * Scrieri / citiri pentru /api/setari/* — necesită poateModificaSetari
+ * (owner sau flag pe membership), independent de rolul admin/editor/viewer.
+ */
+export async function guardSettings(
+  request: Request,
+  opts?: { limit?: number; windowMs?: number },
+): Promise<GuardContext | NextResponse> {
+  const gated = await resolveGuardContext(request, {
+    bucket: "settings",
+    limit: opts?.limit ?? 90,
+    windowMs: opts?.windowMs ?? 60_000,
+    write: false,
+  });
+  if (isGuardError(gated)) return gated;
+  if (!gated.poateModificaSetari) {
+    return NextResponse.json(
+      { error: "Nu ai permisiunea să modifici setările" },
+      { status: 403 },
+    );
+  }
+  return gated;
 }
 
 export function isGuardError(
