@@ -506,7 +506,14 @@ export function ScheduleGrid({
         if (!res.ok) throw new Error(await readError(res));
         const data = (await res.json()) as LunaResponse;
         if (cancelled) return;
-        const mapped = mapLunaToState(data, dayColumns);
+
+        const nextDayAbbrs =
+          data.texte?.dayAbbrs?.length === 7
+            ? data.texte.dayAbbrs
+            : ([...DEFAULT_DAY_ABBRS] as string[]);
+        // Coloane din răspuns — nu din state (evită loop: setTexteUi → dayColumns → re-fetch)
+        const cols = buildDayColumns(year, monthIndex, nextDayAbbrs);
+        const mapped = mapLunaToState(data, cols);
         setStaff(mapped.staff);
         setGrid(mapped.grid);
         const nextFoi =
@@ -528,17 +535,19 @@ export function ScheduleGrid({
           );
         }
         if (data.texte) {
-          setTexteUi({
-            tabelNume: data.texte.tabelNume,
-            tabelOsd: data.texte.tabelOsd,
-            foaieNumeImplicit: data.texte.foaieNumeImplicit,
-            foaieFisierSuffix: data.texte.foaieFisierSuffix,
-            dayAbbrs:
-              data.texte.dayAbbrs?.length === 7
-                ? data.texte.dayAbbrs
-                : [...DEFAULT_DAY_ABBRS],
-            titluPreview: data.texte.titluPreview,
-            exportBase: data.texte.exportBase,
+          setTexteUi((prev) => {
+            const sameAbbrs =
+              prev.dayAbbrs.length === nextDayAbbrs.length &&
+              prev.dayAbbrs.every((a, i) => a === nextDayAbbrs[i]);
+            return {
+              tabelNume: data.texte!.tabelNume,
+              tabelOsd: data.texte!.tabelOsd,
+              foaieNumeImplicit: data.texte!.foaieNumeImplicit,
+              foaieFisierSuffix: data.texte!.foaieFisierSuffix,
+              dayAbbrs: sameAbbrs ? prev.dayAbbrs : nextDayAbbrs,
+              titluPreview: data.texte!.titluPreview,
+              exportBase: data.texte!.exportBase,
+            };
           });
         }
         // Dacă foaia din URL nu există, du-te pe prima
@@ -565,7 +574,7 @@ export function ScheduleGrid({
       cancelled = true;
       if (statusTimer.current) window.clearTimeout(statusTimer.current);
     };
-  }, [dayColumns, year, month, categorieId, foaie, pathname, router]);
+  }, [year, month, monthIndex, categorieId, foaie, pathname, router]);
 
   async function createFoaie() {
     if (!categorieId || creatingFoaie || loading) return;
@@ -969,6 +978,7 @@ export function ScheduleGrid({
       await downloadGraficExport(saved.snapshot, fileName, format);
       flashStatus(
         `${exportFormatLabel(format)} ${activeCategorie?.nume ?? ""} descărcat + salvat în arhivă`,
+
       );
     } catch (e) {
       setError(
