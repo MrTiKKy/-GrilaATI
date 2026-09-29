@@ -8,6 +8,38 @@ const DUMMY_HASH =
 const BCRYPT_ROUNDS = 12;
 
 export const MIN_PASSWORD_LENGTH = 8;
+export const NEW_ACCOUNT_MIN_PASSWORD = 10;
+
+const COMMON_PASSWORDS = new Set([
+  "password", "123456789", "1234567890", "parola123", "qwerty123",
+  "password123", "admin12345", "letmein123", "welcome123", "monkey1234",
+  "iloveyou12", "changeme12", "trustno123",
+]);
+
+/**
+ * Validate password for new accounts (stricter rules).
+ * Returns error message or null if valid.
+ */
+export function validatePasswordForNewAccount(
+  password: string,
+  email: string,
+): string | null {
+  if (password.length < NEW_ACCOUNT_MIN_PASSWORD) {
+    return `Parola trebuie să aibă cel puțin ${NEW_ACCOUNT_MIN_PASSWORD} caractere`;
+  }
+  if (password.length > 256) {
+    return "Parola este prea lungă";
+  }
+  const lower = password.toLowerCase();
+  if (COMMON_PASSWORDS.has(lower)) {
+    return "Parola este prea comună — alege una mai sigură";
+  }
+  const localPart = email.split("@")[0]?.toLowerCase();
+  if (localPart && localPart.length >= 3 && lower.includes(localPart)) {
+    return "Parola nu poate conține adresa de email";
+  }
+  return null;
+}
 
 export async function hashPassword(password: string): Promise<string> {
   return bcrypt.hash(password, BCRYPT_ROUNDS);

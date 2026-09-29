@@ -10,6 +10,7 @@ import { getDb } from "@/lib/db";
 import { clientKey, rateLimit } from "@/lib/rateLimit";
 import {
   getActiveWorkspace,
+  getPreferredWorkspaceId,
   type WorkspaceRole,
 } from "@/lib/workspace";
 
@@ -90,7 +91,8 @@ async function resolveGuardContext(
     return NextResponse.json({ error: "Neautentificat" }, { status: 401 });
   }
 
-  const ws = await getActiveWorkspace(session.user.userId);
+  const preferred = await getPreferredWorkspaceId();
+  const ws = await getActiveWorkspace(session.user.userId, preferred);
   if (!ws) {
     return NextResponse.json(
       { error: "Nu faci parte din niciun workspace" },

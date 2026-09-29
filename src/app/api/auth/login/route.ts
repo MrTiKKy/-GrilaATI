@@ -11,13 +11,15 @@ import { readJsonLimited } from "@/lib/readJsonLimited";
 
 export async function POST(request: Request) {
   const ip = clientKey(request);
-  const limited = rateLimit(`login:${ip}`, 10, 60_000);
-  if (!limited.ok) {
+
+  // Rate limit per IP: 5 / 15 min
+  const limitIp = rateLimit(`login:ip:${ip}`, 5, 15 * 60_000);
+  if (!limitIp.ok) {
     return NextResponse.json(
       { error: "Prea multe încercări de login" },
       {
         status: 429,
-        headers: { "Retry-After": String(limited.retryAfterSec) },
+        headers: { "Retry-After": String(limitIp.retryAfterSec) },
       },
     );
   }
@@ -43,6 +45,19 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { error: "Email sau parolă invalide" },
         { status: 401 },
+      );
+    }
+
+    // Rate limit per email: 5 / 15 min
+    const emailNorm = email.trim().toLowerCase();
+    const limitEmail = rateLimit(`login:email:${emailNorm}`, 5, 15 * 60_000);
+    if (!limitEmail.ok) {
+      return NextResponse.json(
+        { error: "Prea multe încercări de login pentru acest email" },
+        {
+          status: 429,
+          headers: { "Retry-After": String(limitEmail.retryAfterSec) },
+        },
       );
     }
 

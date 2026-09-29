@@ -44,7 +44,7 @@ export const SETARI_TABS: readonly SetariTab[] = [
     href: "/setari/texte",
     enabled: true,
   },
-  { id: "membri", label: "Membri", href: "/setari/membri", enabled: false },
+  { id: "membri", label: "Membri", href: "/setari/membri", enabled: true },
   {
     id: "propuneri",
     label: "Propuneri",

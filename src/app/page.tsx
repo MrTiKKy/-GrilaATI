@@ -1,14 +1,26 @@
 import { Suspense } from "react";
 import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 import { ScheduleGrid } from "@/components/schedule/ScheduleGrid";
 import { SESSION_COOKIE, readSessionPayload } from "@/lib/auth";
-import { getActiveWorkspace } from "@/lib/workspace";
+import {
+  getActiveWorkspace,
+  getPreferredWorkspaceId,
+} from "@/lib/workspace";
 
 export default async function Home() {
   const jar = await cookies();
   const user = await readSessionPayload(jar.get(SESSION_COOKIE)?.value);
-  const ws = user ? await getActiveWorkspace(user.userId) : null;
-  const showSetari = Boolean(ws?.poateModificaSetari);
+  const preferred = await getPreferredWorkspaceId();
+  const ws = user
+    ? await getActiveWorkspace(user.userId, preferred)
+    : null;
+
+  if (!ws) {
+    redirect("/workspaces");
+  }
+
+  const showSetari = Boolean(ws.poateModificaSetari);
 
   return (
     <main className="min-h-full flex-1 bg-slate-100 py-2 sm:py-4">

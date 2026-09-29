@@ -3,7 +3,10 @@ import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { SetariNav } from "@/components/setari/SetariNav";
 import { SESSION_COOKIE, readSessionPayload } from "@/lib/auth";
-import { getActiveWorkspace } from "@/lib/workspace";
+import {
+  getActiveWorkspace,
+  getPreferredWorkspaceId,
+} from "@/lib/workspace";
 
 export default async function SetariLayout({
   children,
@@ -16,8 +19,12 @@ export default async function SetariLayout({
     redirect("/login?next=/setari");
   }
 
-  const ws = await getActiveWorkspace(user.userId);
-  if (!ws?.poateModificaSetari) {
+  const preferred = await getPreferredWorkspaceId();
+  const ws = await getActiveWorkspace(user.userId, preferred);
+  if (!ws) {
+    redirect("/workspaces");
+  }
+  if (!ws.poateModificaSetari) {
     redirect("/");
   }
 

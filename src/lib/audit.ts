@@ -34,7 +34,15 @@ export type AuditAction =
   | "categorie_text_liber_update"
   | "texte_update"
   | "texte_reset"
-  | "texte_reset_section";
+  | "texte_reset_section"
+  | "cont_creat"
+  | "invitatie_trimisa"
+  | "invitatie_acceptata"
+  | "invitatie_refuzata"
+  | "invitatie_anulata"
+  | "membru_rol"
+  | "membru_scos"
+  | "workspace_creat";
 
 export async function writeAudit(params: {
   action: AuditAction;
