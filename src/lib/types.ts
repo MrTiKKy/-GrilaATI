@@ -50,6 +50,17 @@ export type LunaResponse = {
   foiItems?: Array<{ foaie: number; nume: string | null; label: string }>;
   /** Foaia curentă */
   foaie?: number;
+  /** Texte workspace pentru etichete grilă (faza 6) */
+  texte?: {
+    tabelNume: string;
+    tabelOsd: string;
+    foaieNumeImplicit: string;
+    foaieFisierSuffix: string;
+    dayAbbrs: string[];
+    titluPreview?: string;
+    /** Bază nume fișier (fără suffix foaie / extensie), deja curățată */
+    exportBase: string;
+  };
 };
 
 export type ConcediuDto = {
@@ -110,6 +121,12 @@ export type GraficSnapshot = {
     delegatLabel: string;
     medicSef: string;
     asSef: string;
+  };
+  /** Etichete / meta la momentul exportului (faza 6); lipsa = implicite vechi */
+  labels?: {
+    osd: string;
+    pageHint: string;
+    excelSheetName: string;
   };
 };
 

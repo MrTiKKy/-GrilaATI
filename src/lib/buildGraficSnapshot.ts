@@ -1,19 +1,29 @@
 import { getDb } from "@/lib/db";
 import { loadGraficFooter } from "@/lib/loadGraficFooter";
-import {
-  buildGraficTitleFromCategorie,
-  getCategorie,
-} from "@/lib/categorii";
+import { getCategorie } from "@/lib/categorii";
 import {
   listOreCoduriForCategorie,
   rowsToByCod,
 } from "@/lib/oreCoduri";
+import {
+  buildTitluGrafic,
+  dayAbbrList,
+  formatCheie,
+  getTexte,
+  lunaScurta,
+} from "@/lib/texte";
 import { toDateString, type GraficSnapshot } from "@/lib/types";
-import { orePentruCasuta } from "@/lib/weekendOre";
+import { orePentruWeekday } from "@/lib/weekendOre";
 
-const DAY_ABBR = ["D", "L", "Ma", "Mi", "J", "V", "S"] as const;
-
-export { buildGraficTitleFromCategorie as buildMonthTitle };
+export async function buildMonthTitle(
+  workspaceId: string,
+  titluGrafic: string,
+  an: number,
+  luna: number,
+): Promise<string> {
+  const texte = await getTexte(workspaceId);
+  return buildTitluGrafic(texte, titluGrafic, an, luna);
+}
 
 /** Construiește snapshot PDF din DB (sursă de adevăr) — fără date din browser. */
 export async function buildGraficSnapshotFromDb(
@@ -33,20 +43,23 @@ export async function buildGraficSnapshotFromDb(
   const endDate = new Date(Date.UTC(an, luna, 1));
   const end = endDate.toISOString().slice(0, 10);
   const daysInMonth = new Date(an, luna, 0).getDate();
-  const [oreRows, footer] = await Promise.all([
+  const [oreRows, footer, texte] = await Promise.all([
     listOreCoduriForCategorie(workspaceId, categorieId, { onlyActive: false }),
     loadGraficFooter(workspaceId),
+    getTexte(workspaceId),
   ]);
   const ratesByCod = rowsToByCod(oreRows);
+  const abbrs = dayAbbrList(texte);
 
   const days = Array.from({ length: daysInMonth }, (_, i) => {
     const day = i + 1;
     const weekday = new Date(an, luna - 1, day).getDay();
-    const abbr = DAY_ABBR[weekday];
+    const abbr = abbrs[weekday] ?? "";
     return {
       day,
       abbr,
-      weekend: abbr === "S" || abbr === "D",
+      weekday,
+      weekend: weekday === 0 || weekday === 6,
       date: `${an}-${String(luna).padStart(2, "0")}-${String(day).padStart(2, "0")}`,
     };
   });
@@ -85,14 +98,14 @@ export async function buildGraficSnapshotFromDb(
   }
 
   return {
-    title: buildGraficTitleFromCategorie(categorie.titluGrafic, an, luna),
+    title: buildTitluGrafic(texte, categorie.titluGrafic, an, luna),
     days: days.map(({ day, abbr, weekend }) => ({ day, abbr, weekend })),
     rows: angajatiRows.map((row) => {
       const id = String(row.id);
       const cells = days.map((d) => byStaffDay.get(`${id}|${d.date}`) ?? "");
       let osd = 0;
       for (let i = 0; i < days.length; i++) {
-        osd += orePentruCasuta(days[i].abbr, cells[i], ratesByCod);
+        osd += orePentruWeekday(days[i].weekday, cells[i], ratesByCod);
       }
       return {
         name: String(row.nume).toUpperCase(),
@@ -101,5 +114,13 @@ export async function buildGraficSnapshotFromDb(
       };
     }),
     footer,
+    labels: {
+      osd: formatCheie(texte, "tabel.osd"),
+      pageHint: formatCheie(texte, "export.pagina", {
+        page: "{page}",
+        total: "{total}",
+      }),
+      excelSheetName: lunaScurta(texte, luna),
+    },
   };
 }

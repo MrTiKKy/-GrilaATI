@@ -3,11 +3,10 @@ import { writeAudit } from "@/lib/audit";
 import { guardRead, guardWrite } from "@/lib/apiGuard";
 import {
   buildGraficSnapshotFromDb,
-  buildMonthTitle,
 } from "@/lib/buildGraficSnapshot";
 import { getCategorie } from "@/lib/categorii";
 import { getDb } from "@/lib/db";
-import { foaieTitleSuffix, getFoaieNume } from "@/lib/foi";
+import { getFoaieNume } from "@/lib/foi";
 import { clientKey } from "@/lib/rateLimit";
 import { readJsonLimited } from "@/lib/readJsonLimited";
 import { parseMonth, parseYear } from "@/lib/validate";
@@ -138,7 +137,6 @@ export async function POST(request: Request) {
       categorieId,
       foaie,
     );
-    const titluBase = buildMonthTitle(categorie.titluGrafic, an, luna);
     const foaieNume = await getFoaieNume(
       workspaceId,
       an,
@@ -146,7 +144,11 @@ export async function POST(request: Request) {
       categorieId,
       foaie,
     );
-    const suffix = foaieTitleSuffix(foaie, foaieNume);
+    const { getTexte, buildTitluGrafic, foaieTitleSuffixFromTexte } =
+      await import("@/lib/texte");
+    const texte = await getTexte(workspaceId);
+    const titluBase = buildTitluGrafic(texte, categorie.titluGrafic, an, luna);
+    const suffix = foaieTitleSuffixFromTexte(texte, foaie, foaieNume);
     const titlu = suffix ? `${titluBase} · ${suffix}` : titluBase;
     // PDF/Excel/DOCX: adaugă numele doar când e custom (înainte foaia nu apărea în titlul snapshot).
     const custom = typeof foaieNume === "string" ? foaieNume.trim() : "";

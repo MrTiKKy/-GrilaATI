@@ -4,6 +4,13 @@ import { guardRead, isGuardError } from "@/lib/apiGuard";
 import { culoareFromDb } from "@/lib/culoare";
 import { listLunaFoi } from "@/lib/foi";
 import { resolveCategorieId } from "@/lib/categorii";
+import {
+  buildTitluGrafic,
+  buildExportBaseName,
+  dayAbbrList,
+  formatCheie,
+  getTexte,
+} from "@/lib/texte";
 import { parseFoaieParam, parseMonth, parseYear } from "@/lib/validate";
 import {
   toDateString,
@@ -51,7 +58,14 @@ export async function GET(request: Request) {
     const endDate = new Date(Date.UTC(an, luna, 1));
     const end = endDate.toISOString().slice(0, 10);
 
-    const foiItems = await listLunaFoi(workspaceId, an, luna, categorie.id);
+    const texte = await getTexte(workspaceId);
+    const foiItemsRaw = await listLunaFoi(workspaceId, an, luna, categorie.id);
+    const foiItems = foiItemsRaw.map((i) => ({
+      ...i,
+      label: i.nume?.trim()
+        ? i.nume.trim()
+        : formatCheie(texte, "foaie.nume_implicit", { n: i.foaie }),
+    }));
     const foi = foiItems.map((i) => i.foaie);
     const foaie =
       foaieRaw && foi.includes(foaieRaw) ? foaieRaw : (foi[0] ?? 1);
@@ -139,6 +153,28 @@ export async function GET(request: Request) {
       foi,
       foiItems,
       foaie,
+      texte: {
+        tabelNume: formatCheie(texte, "tabel.nume"),
+        tabelOsd: formatCheie(texte, "tabel.osd"),
+        foaieNumeImplicit:
+          texte["foaie.nume_implicit"] ?? "Sheet {n}",
+        foaieFisierSuffix:
+          texte["foaie.fisier_suffix"] ?? "sheet{n}",
+        dayAbbrs: dayAbbrList(texte),
+        titluPreview: buildTitluGrafic(
+          texte,
+          categorie.titluGrafic,
+          an,
+          luna,
+        ),
+        exportBase: buildExportBaseName(
+          texte,
+          an,
+          luna,
+          categorie.nume,
+          "",
+        ),
+      },
     };
     return NextResponse.json(body);
   } catch (error) {

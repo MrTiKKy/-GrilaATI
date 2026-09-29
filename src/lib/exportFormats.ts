@@ -1,7 +1,5 @@
-import {
-  categorieSlugFromGraficTitle,
-  graficExportFileNameForCategorie,
-} from "@/lib/categorii";
+import { categorieSlugFromGraficTitle } from "@/lib/categorii";
+import { sanitizeFisierBase } from "@/lib/texteRegistry";
 
 export const EXPORT_FORMATS = ["pdf", "docx", "xlsx", "xls"] as const;
 export type ExportFormat = (typeof EXPORT_FORMATS)[number];
@@ -21,6 +19,22 @@ export function exportFormatLabel(format: ExportFormat): string {
   return EXPORT_FORMAT_OPTIONS.find((o) => o.id === format)?.label ?? format;
 }
 
+/** Nume fișier din bază deja formatată/curățată + optional suffix foaie. */
+export function graficExportFileNameFromBase(
+  baseName: string,
+  format: ExportFormat,
+  foaieSuffix = "",
+): string {
+  const base = sanitizeFisierBase(baseName) || "grafic";
+  const suf = foaieSuffix ? sanitizeFisierBase(foaieSuffix) || foaieSuffix : "";
+  const mid = suf ? `${base}-${suf}` : base;
+  return `${mid}.${format}`;
+}
+
+/**
+ * Compat + arhivă: pattern implicit vechi
+ * grafic-{slug}-{an}-{ll}[-suffix].ext
+ */
 export function graficExportFileName(
   an: number,
   luna: number,
@@ -28,13 +42,15 @@ export function graficExportFileName(
   format: ExportFormat,
   suffix = "",
 ): string {
-  return graficExportFileNameForCategorie(
-    an,
-    luna,
-    categorieNume,
-    format,
-    suffix,
-  );
+  const kind =
+    categorieNume
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "categorie";
+  const base = `grafic-${kind}-${an}-${String(luna).padStart(2, "0")}`;
+  return graficExportFileNameFromBase(base, format, suffix);
 }
 
 /** Pentru arhivă: derivează slug din titlul salvat. */

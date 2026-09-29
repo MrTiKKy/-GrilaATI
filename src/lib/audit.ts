@@ -31,7 +31,10 @@ export type AuditAction =
   | "cod_update"
   | "cod_ordine"
   | "cod_delete"
-  | "categorie_text_liber_update";
+  | "categorie_text_liber_update"
+  | "texte_update"
+  | "texte_reset"
+  | "texte_reset_section";
 
 export async function writeAudit(params: {
   action: AuditAction;

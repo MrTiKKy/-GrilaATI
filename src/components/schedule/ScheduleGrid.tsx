@@ -26,7 +26,7 @@ import {
   type KeyboardEvent,
   type TouchEvent,
 } from "react";
-import { foaieFileSuffix, numeFoaie } from "@/lib/foiNume";
+import { formatTexte, sanitizeFisierBase } from "@/lib/texteRegistry";
 import type { CreateAngajatResponse, LunaResponse } from "@/lib/types";
 import {
   culoareFromDb,
@@ -52,7 +52,7 @@ import { downloadGraficExport } from "@/components/export/downloadGraficExport";
 import type { GraficPdfData } from "@/components/pdf/GraficAtiPdf";
 import {
   exportFormatLabel,
-  graficExportFileName,
+  graficExportFileNameFromBase,
   type ExportFormat,
 } from "@/lib/exportFormats";
 import {
@@ -62,8 +62,6 @@ import {
 import { EditableFooterText } from "./EditableFooterText";
 import { totalOsdOre, osdBreakdown } from "@/lib/weekendOre";
 import type { OreCoduriByCod } from "@/lib/oreCoduri";
-
-const DAY_ABBR = ["D", "L", "Ma", "Mi", "J", "V", "S"] as const;
 
 type CategorieTab = {
   id: string;
@@ -77,6 +75,7 @@ type DayColumn = {
   key: string;
   day: number;
   abbr: string;
+  weekday: number;
   weekend: boolean;
   date: string; // YYYY-MM-DD
 };
@@ -92,19 +91,36 @@ type CellData = {
 // staffId -> columnKey (d-N) -> cell
 type GridState = Record<string, Record<string, CellData>>;
 
-function buildDayColumns(year: number, monthIndex: number): DayColumn[] {
+const DEFAULT_DAY_ABBRS = ["D", "L", "Ma", "Mi", "J", "V", "S"] as const;
+
+function formatFoaieLabel(
+  foaie: number,
+  nume: string | null | undefined,
+  template: string,
+): string {
+  const t = typeof nume === "string" ? nume.trim() : "";
+  if (t) return t;
+  return template.replace(/\{n\}/g, String(foaie));
+}
+
+function buildDayColumns(
+  year: number,
+  monthIndex: number,
+  dayAbbrs: readonly string[] = DEFAULT_DAY_ABBRS,
+): DayColumn[] {
   const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
   return Array.from({ length: daysInMonth }, (_, i) => {
     const day = i + 1;
     const weekday = new Date(year, monthIndex, day).getDay();
-    const abbr = DAY_ABBR[weekday];
+    const abbr = dayAbbrs[weekday] ?? DEFAULT_DAY_ABBRS[weekday] ?? "";
     const date = `${year}-${String(monthIndex + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
     return {
       kind: "day" as const,
       key: `d-${day}`,
       day,
       abbr,
-      weekend: abbr === "S" || abbr === "D",
+      weekday,
+      weekend: weekday === 0 || weekday === 6,
       date,
     };
   });
@@ -351,14 +367,6 @@ export function ScheduleGrid({
     });
   }
 
-  const dayColumns = useMemo(
-    () => buildDayColumns(year, monthIndex),
-    [year, monthIndex],
-  );
-  const weeks = useMemo(() => buildWeeks(dayColumns), [dayColumns]);
-  /** Index global în dayColumns — folosit la salvare / panel */
-  const columns = dayColumns;
-
   const [isDesktop, setIsDesktop] = useState(true);
   const [weekIndex, setWeekIndex] = useState(0);
 
@@ -379,6 +387,22 @@ export function ScheduleGrid({
   const [foiItems, setFoiItems] = useState<
     Array<{ foaie: number; nume: string | null; label: string }>
   >([{ foaie: 1, nume: null, label: "Sheet 1" }]);
+  const [texteUi, setTexteUi] = useState<{
+    tabelNume: string;
+    tabelOsd: string;
+    foaieNumeImplicit: string;
+    foaieFisierSuffix: string;
+    dayAbbrs: string[];
+    titluPreview?: string;
+    exportBase: string;
+  }>({
+    tabelNume: "Nume",
+    tabelOsd: "O.SD",
+    foaieNumeImplicit: "Sheet {n}",
+    foaieFisierSuffix: "sheet{n}",
+    dayAbbrs: [...DEFAULT_DAY_ABBRS],
+    exportBase: "",
+  });
   const [creatingFoaie, setCreatingFoaie] = useState(false);
   const [renamingFoaie, setRenamingFoaie] = useState<number | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
@@ -388,6 +412,14 @@ export function ScheduleGrid({
   const gridRef = useRef<HTMLDivElement>(null);
   const statusTimer = useRef<number | null>(null);
   const touchStartX = useRef<number | null>(null);
+
+  const dayColumns = useMemo(
+    () => buildDayColumns(year, monthIndex, texteUi.dayAbbrs),
+    [year, monthIndex, texteUi.dayAbbrs],
+  );
+  const weeks = useMemo(() => buildWeeks(dayColumns), [dayColumns]);
+  /** Index global în dayColumns — folosit la salvare / panel */
+  const columns = dayColumns;
 
   const staffIds = useMemo(() => staff.map((s) => s.id), [staff]);
 
@@ -487,9 +519,27 @@ export function ScheduleGrid({
             nextFoi.map((n) => ({
               foaie: n,
               nume: null,
-              label: numeFoaie(n, null),
+              label: formatFoaieLabel(
+                n,
+                null,
+                data.texte?.foaieNumeImplicit ?? "Sheet {n}",
+              ),
             })),
           );
+        }
+        if (data.texte) {
+          setTexteUi({
+            tabelNume: data.texte.tabelNume,
+            tabelOsd: data.texte.tabelOsd,
+            foaieNumeImplicit: data.texte.foaieNumeImplicit,
+            foaieFisierSuffix: data.texte.foaieFisierSuffix,
+            dayAbbrs:
+              data.texte.dayAbbrs?.length === 7
+                ? data.texte.dayAbbrs
+                : [...DEFAULT_DAY_ABBRS],
+            titluPreview: data.texte.titluPreview,
+            exportBase: data.texte.exportBase,
+          });
         }
         // Dacă foaia din URL nu există, du-te pe prima
         if (data.foaie && data.foaie !== foaie) {
@@ -541,11 +591,11 @@ export function ScheduleGrid({
           data.foi.map((n) => ({
             foaie: n,
             nume: null,
-            label: numeFoaie(n, null),
+            label: formatFoaieLabel(n, null, texteUi.foaieNumeImplicit),
           })),
         );
       }
-      flashStatus(`${numeFoaie(data.foaie, null)} creat`);
+      flashStatus(`${formatFoaieLabel(data.foaie, null, texteUi.foaieNumeImplicit)} creat`);
       router.push(
         `${pathname}?${buildMonthQuery(year, month, categorieId!, data.foaie)}`,
         { scroll: false },
@@ -578,7 +628,7 @@ export function ScheduleGrid({
     }
 
     const foaieLabel =
-      foiItems.find((i) => i.foaie === foaie)?.label ?? numeFoaie(foaie, null);
+      foiItems.find((i) => i.foaie === foaie)?.label ?? formatFoaieLabel(foaie, null, texteUi.foaieNumeImplicit);
     const hasData = currentFoaieHasData();
     if (hasData) {
       const ok = window.confirm(
@@ -645,7 +695,7 @@ export function ScheduleGrid({
                 data2.foi.map((n) => ({
                   foaie: n,
                   nume: null,
-                  label: numeFoaie(n, null),
+                  label: formatFoaieLabel(n, null, texteUi.foaieNumeImplicit),
                 })),
               );
             }
@@ -675,7 +725,7 @@ export function ScheduleGrid({
           data.foi.map((n) => ({
             foaie: n,
             nume: null,
-            label: numeFoaie(n, null),
+            label: formatFoaieLabel(n, null, texteUi.foaieNumeImplicit),
           })),
         );
       }
@@ -748,7 +798,7 @@ export function ScheduleGrid({
       const label =
         data.item?.label ??
         data.foiItems?.find((i) => i.foaie === n)?.label ??
-        numeFoaie(n, draft.trim() || null);
+        formatFoaieLabel(n, draft.trim() || null, texteUi.foaieNumeImplicit);
       flashStatus(
         draft.trim() === ""
           ? `Nume resetat: ${label}`
@@ -898,16 +948,24 @@ export function ScheduleGrid({
       if (!saveRes.ok) throw new Error(await readError(saveRes));
       const saved = (await saveRes.json()) as { snapshot: GraficPdfData };
 
-      const fileName = graficExportFileName(
-        year,
-        month,
-        activeCategorie?.nume ?? "grafic",
-        format,
-        foaieFileSuffix(
-          foaie,
-          foiItems.find((i) => i.foaie === foaie)?.nume ?? null,
-        ),
-      );
+      const item = foiItems.find((i) => i.foaie === foaie);
+      const custom = item?.nume?.trim() ?? "";
+      let foaieSuffix = "";
+      if (custom) {
+        foaieSuffix = sanitizeFisierBase(custom).slice(0, 40) || "foaie";
+      } else if (foaie > 1) {
+        foaieSuffix = sanitizeFisierBase(
+          formatTexte(texteUi.foaieFisierSuffix, { n: foaie }),
+        );
+      }
+      const base =
+        texteUi.exportBase ||
+        `grafic-${(activeCategorie?.nume ?? "grafic")
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")}-${year}-${String(month).padStart(2, "0")}`;
+      const fileName = graficExportFileNameFromBase(base, format, foaieSuffix);
       await downloadGraficExport(saved.snapshot, fileName, format);
       flashStatus(
         `${exportFormatLabel(format)} ${activeCategorie?.nume ?? ""} descărcat + salvat în arhivă`,
@@ -1152,7 +1210,12 @@ export function ScheduleGrid({
   }, []);
 
   const osdDays = useMemo(
-    () => dayColumns.map((c) => ({ abbr: c.abbr, key: c.key })),
+    () =>
+      dayColumns.map((c) => ({
+        abbr: c.abbr,
+        key: c.key,
+        weekday: c.weekday,
+      })),
     [dayColumns],
   );
 
@@ -1237,13 +1300,15 @@ export function ScheduleGrid({
                   {activeCategorie?.nume ?? "…"} · {titleMonth}
                 </span>
                 <span className="hidden lg:inline">
-                  {activeCategorie
-                    ? buildGraficTitleFromCategorie(
-                        activeCategorie.titluGrafic,
-                        year,
-                        month,
-                      )
-                    : titleMonth}
+                  {texteUi.titluPreview
+                    ? texteUi.titluPreview
+                    : activeCategorie
+                      ? buildGraficTitleFromCategorie(
+                          activeCategorie.titluGrafic,
+                          year,
+                          month,
+                        )
+                      : titleMonth}
                 </span>
               </h1>
               <button
@@ -1390,7 +1455,7 @@ export function ScheduleGrid({
                         : "w-[4.75rem] max-w-[4.75rem] px-1",
                     ].join(" ")}
                   >
-                    Nume
+                    {texteUi.tabelNume}
                   </th>
                   {visibleColumns.map((col) => (
                     <th
@@ -1409,7 +1474,7 @@ export function ScheduleGrid({
                       rowSpan={2}
                       className="min-w-[2.75rem] border-0 border-b border-l border-b-slate-200 border-l-slate-300 bg-slate-50 px-1.5 py-2 text-center text-[11px] font-semibold text-slate-600"
                     >
-                      O.SD
+                      {texteUi.tabelOsd}
                     </th>
                   )}
                 </tr>
@@ -1512,7 +1577,7 @@ export function ScheduleGrid({
             : foi.map((n) => ({
                 foaie: n,
                 nume: null as string | null,
-                label: numeFoaie(n, null),
+                label: formatFoaieLabel(n, null, texteUi.foaieNumeImplicit),
               }))
           ).map((item) => {
             const n = item.foaie;
@@ -1591,7 +1656,7 @@ export function ScheduleGrid({
                 ? "Nu poți șterge singura foaie"
                 : `Șterge ${
                     foiItems.find((i) => i.foaie === foaie)?.label ??
-                    numeFoaie(foaie, null)
+                    formatFoaieLabel(foaie, null, texteUi.foaieNumeImplicit)
                   } (foaia curentă)`
             }
             className="mb-0.5 ml-1 rounded-lg border border-rose-200 bg-white px-2.5 py-1.5 text-sm font-medium text-rose-700 transition-colors hover:border-rose-300 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-40"
@@ -1600,7 +1665,7 @@ export function ScheduleGrid({
               ? "…"
               : `Șterge ${
                   foiItems.find((i) => i.foaie === foaie)?.label ??
-                  numeFoaie(foaie, null)
+                  formatFoaieLabel(foaie, null, texteUi.foaieNumeImplicit)
                 }`}
           </button>
         </div>

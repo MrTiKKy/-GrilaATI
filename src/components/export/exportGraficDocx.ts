@@ -71,6 +71,7 @@ export async function downloadGraficDocx(
 ) {
   const footer = mergeGraficFooter(data.footer);
   const dayCount = data.days.length;
+  const osdLabel = data.labels?.osd?.trim() || "O.SD";
   const totalWidth = 15700;
   const nameW = 1800;
   const osdW = 700;
@@ -91,7 +92,7 @@ export async function downloadGraficDocx(
           fontSize: GRAFIC_FONT_DOCX.header,
         }),
       ),
-      cell("O.SD", {
+      cell(osdLabel, {
         bold: true,
         width: osdW,
         fontSize: GRAFIC_FONT_DOCX.abbr,

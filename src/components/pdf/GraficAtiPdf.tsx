@@ -30,6 +30,11 @@ export type GraficPdfData = {
   days: GraficPdfDay[];
   rows: GraficPdfRow[];
   footer?: GraficFooterTexts;
+  labels?: {
+    osd: string;
+    pageHint: string;
+    excelSheetName: string;
+  };
 };
 
 /** A4 landscape (pt) */
@@ -215,10 +220,12 @@ function TableHeader({
   days,
   rowH,
   nameFont,
+  osdLabel,
 }: {
   days: GraficPdfDay[];
   rowH: number;
   nameFont: number;
+  osdLabel: string;
 }) {
   const f = fontsForRow(rowH, nameFont);
   return (
@@ -238,7 +245,9 @@ function TableHeader({
           </View>
         ))}
         <View style={styles.osdCell}>
-          <Text style={[styles.headerText, { fontSize: f.abbr }]}>O.SD</Text>
+          <Text style={[styles.headerText, { fontSize: f.abbr }]}>
+            {osdLabel}
+          </Text>
         </View>
       </View>
       <View style={[styles.row, { height: rowH }]}>
@@ -383,6 +392,9 @@ function DelegatRow({
 
 export function GraficAtiPdf({ data }: { data: GraficPdfData }) {
   const footer = mergeGraficFooter(data.footer ?? GRAFIC_FOOTER_DEFAULTS);
+  const osdLabel = data.labels?.osd?.trim() || "O.SD";
+  const pageHintTpl =
+    data.labels?.pageHint?.trim() || "Pagina {page} / {total}";
   // Tot pe o pagină când e rezonabil; altfel chunk
   const maxPerPage = 40;
   const pages = chunkRows(data.rows, maxPerPage);
@@ -415,6 +427,9 @@ export function GraficAtiPdf({ data }: { data: GraficPdfData }) {
           hint -
           (includeDelegatBlock ? FOOTER_BLOCK : 0);
         const h = Math.max(9, usable / tableRowCount);
+        const pageHint = pageHintTpl
+          .replace(/\{page\}/g, String(pageIndex + 1))
+          .replace(/\{total\}/g, String(totalPages));
 
         return (
           <Page
@@ -425,14 +440,15 @@ export function GraficAtiPdf({ data }: { data: GraficPdfData }) {
             wrap={false}
           >
             <Text style={styles.title}>{data.title}</Text>
-            {hasHint && (
-              <Text style={styles.pageHint}>
-                Pagina {pageIndex + 1} / {totalPages}
-              </Text>
-            )}
+            {hasHint && <Text style={styles.pageHint}>{pageHint}</Text>}
 
             <View style={styles.table}>
-              <TableHeader days={data.days} rowH={h} nameFont={nameFont} />
+              <TableHeader
+                days={data.days}
+                rowH={h}
+                nameFont={nameFont}
+                osdLabel={osdLabel}
+              />
               <StaffTableRows
                 rows={pageRows}
                 days={data.days}

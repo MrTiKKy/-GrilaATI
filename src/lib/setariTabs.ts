@@ -40,9 +40,9 @@ export const SETARI_TABS: readonly SetariTab[] = [
   { id: "foi", label: "Foi", href: "/setari/foi", enabled: false },
   {
     id: "texte-export",
-    label: "Texte și export",
-    href: "/setari/texte-export",
-    enabled: false,
+    label: "Texte",
+    href: "/setari/texte",
+    enabled: true,
   },
   { id: "membri", label: "Membri", href: "/setari/membri", enabled: false },
   {

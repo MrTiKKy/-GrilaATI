@@ -25,7 +25,10 @@ const MONTH_ABBR: Record<string, string> = {
   DECEMBRIE: "DEC",
 };
 
-function sheetNameFromTitle(title: string): string {
+function sheetNameFromTitle(title: string, preferred?: string): string {
+  if (preferred && preferred.trim()) {
+    return preferred.trim().slice(0, 31);
+  }
   const upper = title.toUpperCase();
   for (const [full, abbr] of Object.entries(MONTH_ABBR)) {
     if (upper.includes(full)) return abbr;
@@ -82,9 +85,12 @@ function setTextCell(
 async function buildExcelJsWorkbook(data: GraficSnapshot) {
   const ExcelJS = await import("exceljs");
   const footer = footerOf(data);
+  const osdLabel = data.labels?.osd?.trim() || "O.SD";
   const wb = new ExcelJS.Workbook();
   wb.creator = "Grila ATI";
-  const ws = wb.addWorksheet(sheetNameFromTitle(data.title), {
+  const ws = wb.addWorksheet(
+    sheetNameFromTitle(data.title, data.labels?.excelSheetName),
+    {
     views: [{ state: "frozen", ySplit: 4, showGridLines: true }],
     pageSetup: {
       orientation: "landscape",
@@ -127,7 +133,7 @@ async function buildExcelJsWorkbook(data: GraficSnapshot) {
   }
   {
     const cell = headerNum.getCell(lastCol);
-    setTextCell(cell, "O.SD", { bold: true, size: GRAFIC_FONT.osd });
+    setTextCell(cell, osdLabel, { bold: true, size: GRAFIC_FONT.osd });
   }
 
   const headerAbbr = ws.getRow(4);
@@ -248,6 +254,11 @@ function buildHtmlXls(data: GraficSnapshot): string {
   const footer = footerOf(data);
   const dayCount = data.days.length;
   const lastCol = 1 + dayCount + 1;
+  const osdLabel = data.labels?.osd?.trim() || "O.SD";
+  const sheetName = sheetNameFromTitle(
+    data.title,
+    data.labels?.excelSheetName,
+  );
 
   const esc = (s: string) =>
     s
@@ -330,7 +341,7 @@ function buildHtmlXls(data: GraficSnapshot): string {
         heightPx: rowPx,
       });
     }
-    html += td("O.SD", { bold: true, asText: true, heightPx: rowPx });
+    html += td(osdLabel, { bold: true, asText: true, heightPx: rowPx });
     rows.push(`${html}</tr>`);
   }
   {
@@ -417,7 +428,7 @@ function buildHtmlXls(data: GraficSnapshot): string {
   );
 
   return `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
-<head><meta charset="UTF-8"><!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet><x:Name>${esc(sheetNameFromTitle(data.title))}</x:Name><x:WorksheetOptions><x:Print><x:ValidPrinterInfo/></x:Print></x:WorksheetOptions></x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]-->
+<head><meta charset="UTF-8"><!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet><x:Name>${esc(sheetName)}</x:Name><x:WorksheetOptions><x:Print><x:ValidPrinterInfo/></x:Print></x:WorksheetOptions></x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]-->
 <style>
 td { font-family: Calibri, sans-serif; }
 </style>
