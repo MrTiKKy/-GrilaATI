@@ -3,7 +3,6 @@ import { writeAudit } from "@/lib/audit";
 import { guardSettings, isGuardError } from "@/lib/apiGuard";
 import {
   listCategorii,
-  seedOreOsdForCategorie,
   type CategorieDto,
 } from "@/lib/categorii";
 import { seedOreCoduriForNewCategorie } from "@/lib/oreCoduri";
@@ -88,7 +87,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Insert eșuat" }, { status: 500 });
     }
 
-    await seedOreOsdForCategorie(workspaceId, String(row.id), null);
     await seedOreCoduriForNewCategorie(workspaceId, String(row.id));
 
     await writeAudit({

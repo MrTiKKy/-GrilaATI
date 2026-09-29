@@ -6,25 +6,28 @@ import {
 } from "@/lib/auth";
 import { authenticateUser } from "@/lib/password";
 import { writeAudit } from "@/lib/audit";
-import { clientKey, rateLimit } from "@/lib/rateLimit";
+import { clientKey, rateLimitDb } from "@/lib/rateLimit";
 import { readJsonLimited } from "@/lib/readJsonLimited";
+
+const WINDOW_MS = 15 * 60_000;
+const LIMIT = 5;
 
 export async function POST(request: Request) {
   const ip = clientKey(request);
 
-  // Rate limit per IP: 5 / 15 min
-  const limitIp = rateLimit(`login:ip:${ip}`, 5, 15 * 60_000);
-  if (!limitIp.ok) {
-    return NextResponse.json(
-      { error: "Prea multe încercări de login" },
-      {
-        status: 429,
-        headers: { "Retry-After": String(limitIp.retryAfterSec) },
-      },
-    );
-  }
-
   try {
+    // Rate limit IP pe orice încercare
+    const limitIp = await rateLimitDb(`login:ip:${ip}`, LIMIT, WINDOW_MS);
+    if (!limitIp.ok) {
+      return NextResponse.json(
+        { error: "Prea multe încercări de login" },
+        {
+          status: 429,
+          headers: { "Retry-After": String(limitIp.retryAfterSec) },
+        },
+      );
+    }
+
     const parsed = await readJsonLimited<{
       email?: string;
       password?: string;
@@ -48,9 +51,12 @@ export async function POST(request: Request) {
       );
     }
 
-    // Rate limit per email: 5 / 15 min
     const emailNorm = email.trim().toLowerCase();
-    const limitEmail = rateLimit(`login:email:${emailNorm}`, 5, 15 * 60_000);
+    const limitEmail = await rateLimitDb(
+      `login:email:${emailNorm}`,
+      LIMIT,
+      WINDOW_MS,
+    );
     if (!limitEmail.ok) {
       return NextResponse.json(
         { error: "Prea multe încercări de login pentru acest email" },

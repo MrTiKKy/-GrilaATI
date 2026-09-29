@@ -52,4 +52,17 @@ CREATE INDEX IF NOT EXISTS invitatii_email_status_idx
 CREATE INDEX IF NOT EXISTS invitatii_workspace_idx
   ON invitatii (workspace_id, status);
 
+-- Rate limit persistent pentru login / register (curățat în app la >1h)
+CREATE TABLE IF NOT EXISTS login_incercari (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  cheie text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS login_incercari_cheie_created_idx
+  ON login_incercari (cheie, created_at);
+
+CREATE INDEX IF NOT EXISTS login_incercari_created_idx
+  ON login_incercari (created_at);
+
 COMMIT;

@@ -156,40 +156,26 @@ export async function resolveCategorieId(
   return active[0] ?? null;
 }
 
-/** Defaults ore O.SD pentru o categorie nouă (template asistent istoric). */
+/** @deprecated Nu mai seed-uim ore_osd — panoul O.SD folosește ore_coduri. */
 export const ORE_OSD_SEED_TEMPLATE: Array<{
   zi: "V" | "S" | "D";
   schimb: "1" | "1/3" | "2";
   ore: number;
 }> = [
-  { zi: "V", schimb: "1/3", ore: 7 },
-  { zi: "S", schimb: "1", ore: 8 },
-  { zi: "S", schimb: "1/3", ore: 18 },
-  { zi: "S", schimb: "2", ore: 6 },
-  { zi: "D", schimb: "1", ore: 8 },
-  { zi: "D", schimb: "1/3", ore: 11 },
-  { zi: "D", schimb: "2", ore: 6 },
+  { zi: "V", schimb: "1/3", ore: 0 },
+  { zi: "S", schimb: "1", ore: 0 },
+  { zi: "S", schimb: "1/3", ore: 0 },
+  { zi: "S", schimb: "2", ore: 0 },
+  { zi: "D", schimb: "1", ore: 0 },
+  { zi: "D", schimb: "1/3", ore: 0 },
+  { zi: "D", schimb: "2", ore: 0 },
 ];
 
+/** @deprecated No-op — păstrat pentru compat importuri vechi. */
 export async function seedOreOsdForCategorie(
-  workspaceId: string,
-  categorieId: string,
-  postVechi: string | null,
+  _workspaceId: string,
+  _categorieId: string,
+  _postVechi: string | null,
 ): Promise<void> {
-  const sql = getDb();
-  for (const cell of ORE_OSD_SEED_TEMPLATE) {
-    await sql`
-      INSERT INTO ore_osd (workspace_id, categorie_id, post, zi, schimb, ore, updated_at)
-      VALUES (
-        ${workspaceId}::uuid,
-        ${categorieId}::uuid,
-        ${postVechi},
-        ${cell.zi},
-        ${cell.schimb},
-        ${cell.ore},
-        now()
-      )
-      ON CONFLICT (workspace_id, categorie_id, zi, schimb) DO NOTHING
-    `;
-  }
+  // intentional no-op
 }

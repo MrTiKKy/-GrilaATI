@@ -1,39 +1,42 @@
-import { getDb } from "@/lib/db";
+import {
+  listOreCoduriForCategorie,
+  rowsToByCod,
+} from "@/lib/oreCoduri";
 import {
   cellsToRates,
   isOreOsdSchimb,
   isOreOsdZi,
-  mergeWithDefaultsForCategorie,
+  ORE_OSD_COLUMNS,
   type OreOsdCell,
   type OreOsdRates,
 } from "@/lib/oreOsd";
 
+/**
+ * Compatibilitate legacy /api/ore-osd: ore pe (zi, schimb) derivate din ore_coduri.
+ * Nu mai citește tabelul ore_osd. Codurile „1” / „1/3” / „2” → ore V/S/D; lipsă → 0.
+ */
 export async function loadOreOsdCellsForCategorie(
   workspaceId: string,
   categorieId: string,
 ): Promise<OreOsdCell[]> {
-  const sql = getDb();
-  const rows = await sql`
-    SELECT categorie_id::text AS categorie_id, zi, schimb, ore::float AS ore
-    FROM ore_osd
-    WHERE workspace_id = ${workspaceId}::uuid
-      AND categorie_id = ${categorieId}::uuid
-  `;
-  const cells: OreOsdCell[] = [];
-  for (const row of rows) {
-    const zi = String(row.zi);
-    const schimb = String(row.schimb);
-    const ore = Number(row.ore);
-    if (!isOreOsdZi(zi) || !isOreOsdSchimb(schimb)) continue;
-    if (!Number.isFinite(ore)) continue;
-    cells.push({
-      categorieId: String(row.categorie_id),
-      zi,
-      schimb,
-      ore,
-    });
-  }
-  return mergeWithDefaultsForCategorie(categorieId, cells);
+  const rows = await listOreCoduriForCategorie(workspaceId, categorieId, {
+    onlyActive: true,
+  });
+  const byCod = rowsToByCod(rows);
+
+  return ORE_OSD_COLUMNS.map(({ zi, schimb }) => {
+    if (!isOreOsdZi(zi) || !isOreOsdSchimb(schimb)) {
+      return { categorieId, zi, schimb, ore: 0 };
+    }
+    const r = byCod[schimb];
+    let ore = 0;
+    if (r) {
+      if (zi === "V") ore = r.vineri || 0;
+      else if (zi === "S") ore = r.sambata || 0;
+      else ore = r.duminica || 0;
+    }
+    return { categorieId, zi, schimb, ore };
+  });
 }
 
 export async function loadOreOsdRatesForCategorie(

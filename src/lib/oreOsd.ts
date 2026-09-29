@@ -11,19 +11,22 @@ export type OreOsdCell = {
 /** Cheie internă categorieId|zi|schimb → ore */
 export type OreOsdRates = Record<string, number>;
 
-/** Template default (istoric asistent) pentru categorii noi */
+/**
+ * Template default: 0 peste tot.
+ * (Valorile istorice ATI trăiesc în ore_coduri; nu mai injectăm 7/8/18 din cod.)
+ */
 export const ORE_OSD_DEFAULT_TEMPLATE: Array<{
   zi: OreOsdZi;
   schimb: OreOsdSchimb;
   ore: number;
 }> = [
-  { zi: "V", schimb: "1/3", ore: 7 },
-  { zi: "S", schimb: "1", ore: 8 },
-  { zi: "S", schimb: "1/3", ore: 18 },
-  { zi: "S", schimb: "2", ore: 6 },
-  { zi: "D", schimb: "1", ore: 8 },
-  { zi: "D", schimb: "1/3", ore: 11 },
-  { zi: "D", schimb: "2", ore: 6 },
+  { zi: "V", schimb: "1/3", ore: 0 },
+  { zi: "S", schimb: "1", ore: 0 },
+  { zi: "S", schimb: "1/3", ore: 0 },
+  { zi: "S", schimb: "2", ore: 0 },
+  { zi: "D", schimb: "1", ore: 0 },
+  { zi: "D", schimb: "1/3", ore: 0 },
+  { zi: "D", schimb: "2", ore: 0 },
 ];
 
 /** Coloane afișate în widget (V doar 1/3) */

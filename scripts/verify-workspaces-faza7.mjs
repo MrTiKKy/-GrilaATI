@@ -383,6 +383,43 @@ async function main() {
     "ore_coduri toate 0",
   );
 
+  const osdRows = await sql`
+    SELECT count(*)::int AS n FROM ore_osd WHERE workspace_id = ${testWsId}::uuid
+  `;
+  assert(osdRows[0]?.n === 0, `ore_osd rows pe WS nou = 0 (got ${osdRows[0]?.n})`);
+
+  const catsForOsd = await sql`
+    SELECT id::text AS id FROM categorii WHERE workspace_id = ${testWsId}::uuid LIMIT 1
+  `;
+  const catIdForOsd = catsForOsd[0]?.id;
+  const osdApi = await api(
+    "GET",
+    `/api/ore-osd?categorie=${encodeURIComponent(catIdForOsd)}`,
+    { cookies: tCookies },
+  );
+  assert(osdApi.status === 200, `GET ore-osd → ${osdApi.status}`);
+  assert(
+    Array.isArray(osdApi.data?.items) &&
+      osdApi.data.items.every((it) => Number(it.ore) === 0),
+    "panou O.SD (legacy) arată 0",
+  );
+  const oreSetari = await api(
+    "GET",
+    `/api/setari/ore?categorie=${encodeURIComponent(catIdForOsd)}`,
+    { cookies: tCookies },
+  );
+  assert(oreSetari.status === 200, `GET setari/ore → ${oreSetari.status}`);
+  assert(
+    Array.isArray(oreSetari.data?.items) &&
+      oreSetari.data.items.every(
+        (it) =>
+          Number(it.oreVineri) === 0 &&
+          Number(it.oreSambata) === 0 &&
+          Number(it.oreDuminica) === 0,
+      ),
+    "setări ore (ore_coduri) toate 0",
+  );
+
   const seedTexte = await sql`
     SELECT count(*)::int AS n FROM texte WHERE workspace_id = ${testWsId}::uuid
   `;
@@ -468,11 +505,30 @@ async function main() {
   assert(inv2.status === 201, `a doua invitație → ${inv2.status}`);
   const inv2Id = inv2.data?.id;
 
-  const accept = await api("POST", `/api/invitatii/${inv2Id}/accept`, {
-    body: {},
-    cookies: nCookies,
+  // Acceptare dublă simultană
+  const [accA, accB] = await Promise.all([
+    api("POST", `/api/invitatii/${inv2Id}/accept`, {
+      body: {},
+      cookies: nCookies,
+    }),
+    api("POST", `/api/invitatii/${inv2Id}/accept`, {
+      body: {},
+      cookies: nCookies,
+    }),
+  ]);
+  assert(
+    (accA.status === 200 || accA.status === 404) &&
+      (accB.status === 200 || accB.status === 404) &&
+      (accA.status === 200 || accB.status === 200),
+    `accept dublu simultan → ${accA.status}/${accB.status} (cel puțin un 200)`,
+  );
+  const memAfterDouble = await api("GET", "/api/setari/membri", {
+    cookies: tCookies,
   });
-  assert(accept.status === 200, `accept → ${accept.status}`);
+  const nicoCount = (memAfterDouble.data?.items || []).filter(
+    (m) => m.email === NICOLETA_EMAIL,
+  ).length;
+  assert(nicoCount === 1, `un singur membru nicoleta după accept dublu (got ${nicoCount})`);
 
   const nWs = await api("GET", "/api/workspaces", { cookies: nCookies });
   const testCard = nWs.data?.items?.find((w) => w.id === testWsId);
@@ -528,6 +584,9 @@ async function main() {
 
   // (f) Invitație către email fără cont + duplicat + anulare
   console.log("\n(f) Invitație fără cont / duplicat / anulare…");
+  // Eliberăm cota register (testele de validare din (c) au consumat 5/15min)
+  await sql`DELETE FROM login_incercari WHERE cheie LIKE 'register:%'`;
+
   const invNo = await api("POST", "/api/setari/membri/invitatii", {
     body: { email: NO_ACCOUNT_EMAIL, rol: "editor" },
     cookies: tCookies,
@@ -572,23 +631,44 @@ async function main() {
     "după anulare dispare la invitat",
   );
 
-  // (g) Rate limit login (5 / 15 min) — folosim email inventat ca să nu blocăm nicoleta
+  // (g) Rate limit DB (login + register, inclusiv parolă respinsă)
   console.log("\n(g) Rate limit…");
+  await sql`DELETE FROM login_incercari`;
+
   const rlEmail = `ratelimit-${stamp}@example.com`;
-  let got429 = false;
+  let got429Login = false;
   for (let i = 0; i < 7; i++) {
     const r = await api("POST", "/api/auth/login", {
       body: { email: rlEmail, password: "wrong-password-xx" },
     });
     if (r.status === 429) {
-      got429 = true;
+      got429Login = true;
       break;
     }
   }
-  assert(got429, "login rate limit 429 după ~5 eșecuri");
+  assert(got429Login, "login rate limit 429 după ~5 eșecuri");
+
+  await sql`DELETE FROM login_incercari`;
+  let got429Reg = false;
+  for (let i = 0; i < 7; i++) {
+    const r = await api("POST", "/api/auth/register", {
+      body: {
+        nume: "X",
+        email: `rlreg-${stamp}-${i}@example.com`,
+        password: "scurt",
+        confirmPassword: "scurt",
+      },
+    });
+    if (r.status === 429) {
+      got429Reg = true;
+      break;
+    }
+  }
+  assert(got429Reg, "register rate limit 429 (inclusiv parole respinse)");
 
   // Cleanup
   await cleanup(testUserId, testWsId, [TEST_EMAIL, NO_ACCOUNT_EMAIL]);
+  await sql`DELETE FROM login_incercari`;
 
   const afterCs = await checksums();
   const afterAti = await atiSlice();

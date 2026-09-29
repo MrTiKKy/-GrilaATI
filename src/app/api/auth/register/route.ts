@@ -6,12 +6,14 @@ import {
 } from "@/lib/auth";
 import { hashPassword, validatePasswordForNewAccount } from "@/lib/password";
 import { writeAudit } from "@/lib/audit";
-import { clientKey, rateLimit } from "@/lib/rateLimit";
+import { clientKey, rateLimitDb } from "@/lib/rateLimit";
 import { readJsonLimited } from "@/lib/readJsonLimited";
 import { getDb } from "@/lib/db";
 import { clampString } from "@/lib/validate";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const WINDOW_MS = 15 * 60_000;
+const LIMIT = 5;
 
 export async function POST(request: Request) {
   const ip = clientKey(request);
@@ -24,6 +26,18 @@ export async function POST(request: Request) {
       confirmPassword?: unknown;
     }>(request, 4_096);
     if (!parsed.ok) return parsed.response;
+
+    // Rate limit IP pe orice încercare (inclusiv parolă respinsă)
+    const limitIp = await rateLimitDb(`register:ip:${ip}`, LIMIT, WINDOW_MS);
+    if (!limitIp.ok) {
+      return NextResponse.json(
+        { error: "Prea multe cereri. Încearcă din nou mai târziu." },
+        {
+          status: 429,
+          headers: { "Retry-After": String(limitIp.retryAfterSec) },
+        },
+      );
+    }
 
     const nume = clampString(parsed.data.nume, 80);
     if (!nume || nume.length < 1) {
@@ -40,6 +54,21 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { error: "Adresă de email invalidă" },
         { status: 400 },
+      );
+    }
+
+    const limitEmail = await rateLimitDb(
+      `register:email:${emailNorm}`,
+      LIMIT,
+      WINDOW_MS,
+    );
+    if (!limitEmail.ok) {
+      return NextResponse.json(
+        { error: "Prea multe cereri. Încearcă din nou mai târziu." },
+        {
+          status: 429,
+          headers: { "Retry-After": String(limitEmail.retryAfterSec) },
+        },
       );
     }
 
@@ -62,36 +91,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: pwError }, { status: 400 });
     }
 
-    // Rate limit after validation: 5 / 15 min per IP and per email
-    const limitIp = rateLimit(`register:ip:${ip}`, 5, 15 * 60_000);
-    if (!limitIp.ok) {
-      return NextResponse.json(
-        { error: "Prea multe cereri. Încearcă din nou mai târziu." },
-        {
-          status: 429,
-          headers: { "Retry-After": String(limitIp.retryAfterSec) },
-        },
-      );
-    }
-
-    const limitEmail = rateLimit(
-      `register:email:${emailNorm}`,
-      5,
-      15 * 60_000,
-    );
-    if (!limitEmail.ok) {
-      return NextResponse.json(
-        { error: "Prea multe cereri. Încearcă din nou mai târziu." },
-        {
-          status: 429,
-          headers: { "Retry-After": String(limitEmail.retryAfterSec) },
-        },
-      );
-    }
-
     const sql = getDb();
 
-    // Check if email already exists — neutral message
     const existing = await sql`
       SELECT id FROM users WHERE email = ${emailNorm} LIMIT 1
     `;

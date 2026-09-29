@@ -139,6 +139,7 @@ export async function POST(request: Request) {
     }
 
     // Seed ore_coduri for the new categorie — 0 for each cod×categorie
+    // (panoul O.SD / grila citesc ore_coduri; fără seed pe ore_osd)
     await sql`
       INSERT INTO ore_coduri (workspace_id, categorie_id, cod_id, ore_vineri, ore_sambata, ore_duminica, updated_at)
       SELECT
@@ -151,24 +152,6 @@ export async function POST(request: Request) {
         AND (c.categorie_id IS NULL OR c.categorie_id = ${catId}::uuid)
       ON CONFLICT (workspace_id, categorie_id, cod_id) DO NOTHING
     `;
-
-    // Seed ore_osd for new categorie
-    const oreOsdSeed = [
-      { zi: "V", schimb: "1/3", ore: 7 },
-      { zi: "S", schimb: "1", ore: 8 },
-      { zi: "S", schimb: "1/3", ore: 18 },
-      { zi: "S", schimb: "2", ore: 6 },
-      { zi: "D", schimb: "1", ore: 8 },
-      { zi: "D", schimb: "1/3", ore: 11 },
-      { zi: "D", schimb: "2", ore: 6 },
-    ];
-    for (const cell of oreOsdSeed) {
-      await sql`
-        INSERT INTO ore_osd (workspace_id, categorie_id, post, zi, schimb, ore, updated_at)
-        VALUES (${wsId}::uuid, ${catId}::uuid, NULL, ${cell.zi}, ${cell.schimb}, ${cell.ore}, now())
-        ON CONFLICT (workspace_id, categorie_id, zi, schimb) DO NOTHING
-      `;
-    }
 
     // Set cookie to new workspace
     const response = NextResponse.json({ id: wsId }, { status: 201 });
