@@ -15,6 +15,7 @@ import {
   MIN_PASSWORD_LENGTH,
 } from "@/lib/password";
 import { clampString } from "@/lib/validate";
+import { isDevEmail } from "@/lib/devAccess";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -46,14 +47,16 @@ export async function GET(request: Request) {
       );
     }
 
+    const email = String(row.email);
     return NextResponse.json({
       user: {
         id: String(row.id),
-        email: String(row.email),
+        email,
         createdAt:
           row.created_at instanceof Date
             ? row.created_at.toISOString()
             : String(row.created_at),
+        isDev: isDevEmail(email),
       },
     });
   } catch (error) {
