@@ -1,6 +1,7 @@
 import type { GraficFooterTexts } from "@/lib/graficFooter";
 import { mergeGraficFooter } from "@/lib/graficFooter";
 import { GRAFIC_FONT } from "@/lib/graficTypography";
+import { splitCellDisplayLines } from "@/lib/cellText";
 import type { GraficSnapshot } from "@/lib/types";
 import { downloadBlob } from "./downloadBlob";
 
@@ -106,7 +107,12 @@ async function buildExcelJsWorkbook(data: GraficSnapshot) {
 
   ws.getColumn(1).width = 16;
   for (let d = 1; d <= dayCount; d++) {
-    ws.getColumn(1 + d).width = DAY_COL_WIDTH;
+    let maxChars = 2;
+    for (const row of data.rows) {
+      const lines = splitCellDisplayLines(row.cells[d - 1] || "");
+      for (const line of lines) maxChars = Math.max(maxChars, line.length);
+    }
+    ws.getColumn(1 + d).width = Math.min(16, Math.max(DAY_COL_WIDTH, maxChars * 1.2));
   }
   ws.getColumn(lastCol).width = 5.5;
 
@@ -189,7 +195,13 @@ async function buildExcelJsWorkbook(data: GraficSnapshot) {
     nameCell.border = allBorders;
     for (let i = 0; i < dayCount; i++) {
       const cell = ws.getCell(r, 2 + i);
-      setTextCell(cell, row.cells[i] || "");
+      const lines = splitCellDisplayLines(row.cells[i] || "");
+      setTextCell(cell, lines.join("\n"));
+      cell.alignment = {
+        horizontal: "center",
+        vertical: "middle",
+        wrapText: true,
+      };
       cell.border = allBorders;
       if (data.days[i].weekend) {
         cell.fill = {
@@ -313,7 +325,15 @@ function buildHtmlXls(data: GraficSnapshot): string {
     return `<td${colspan} style="${styleParts.join(";")}">${body}</td>`;
   };
 
-  const dayPx = 28;
+  const dayPxBase = 28;
+  const dayWidths = Array.from({ length: dayCount }, (_, d) => {
+    let maxChars = 2;
+    for (const row of data.rows) {
+      const lines = splitCellDisplayLines(row.cells[d] || "");
+      for (const line of lines) maxChars = Math.max(maxChars, line.length);
+    }
+    return Math.min(72, Math.max(dayPxBase, Math.round(maxChars * 7.5)));
+  });
   const rowPx = 28;
 
   const rows: string[] = [];
@@ -337,7 +357,7 @@ function buildHtmlXls(data: GraficSnapshot): string {
         bold: true,
         weekend: data.days[i].weekend,
         asText: true,
-        widthPx: dayPx,
+        widthPx: dayWidths[i],
         heightPx: rowPx,
       });
     }
@@ -352,7 +372,7 @@ function buildHtmlXls(data: GraficSnapshot): string {
         bold: true,
         weekend: data.days[i].weekend,
         asText: true,
-        widthPx: dayPx,
+        widthPx: dayWidths[i],
         heightPx: rowPx,
       });
     }
@@ -370,13 +390,24 @@ function buildHtmlXls(data: GraficSnapshot): string {
     });
     for (let i = 0; i < dayCount; i++) {
       const val = row.cells[i] || "";
-      html += td(val || "&nbsp;", {
-        weekend: data.days[i].weekend,
-        asText: !!val,
-        raw: !val,
-        widthPx: dayPx,
-        heightPx: rowPx,
-      });
+      if (!val) {
+        html += td("&nbsp;", {
+          weekend: data.days[i].weekend,
+          raw: true,
+          widthPx: dayWidths[i],
+          heightPx: rowPx,
+        });
+      } else {
+        const lines = splitCellDisplayLines(val).map((l) =>
+          esc(asLiteralScheduleValue(l)),
+        );
+        html += td(lines.join("<br/>"), {
+          weekend: data.days[i].weekend,
+          raw: true,
+          widthPx: dayWidths[i],
+          heightPx: rowPx,
+        });
+      }
     }
     html += td(row.osd || "&nbsp;", {
       asText: !!row.osd,
@@ -390,7 +421,11 @@ function buildHtmlXls(data: GraficSnapshot): string {
     let html = `<tr style="height:${rowPx}px">`;
     html += td("&nbsp;", { align: "left", heightPx: rowPx, raw: true });
     for (let d = 0; d < dayCount; d++) {
-      html += td("&nbsp;", { widthPx: dayPx, heightPx: rowPx, raw: true });
+      html += td("&nbsp;", {
+        widthPx: dayWidths[d],
+        heightPx: rowPx,
+        raw: true,
+      });
     }
     html += td("&nbsp;", { heightPx: rowPx, raw: true });
     rows.push(`${html}</tr>`);

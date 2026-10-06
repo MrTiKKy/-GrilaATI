@@ -2,6 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useState } from "react";
+import { writeWorkspaceUiCache } from "@/lib/workspaceUiCache";
+import { handleUnauthorized } from "@/lib/authClient";
 
 type WorkspaceItem = {
   id: string;
@@ -64,6 +66,7 @@ export default function WorkspacesPage() {
         fetch("/api/workspaces"),
         fetch("/api/invitatii"),
       ]);
+      if (handleUnauthorized(wsRes) || handleUnauthorized(invRes)) return;
       if (!wsRes.ok) throw new Error(await readError(wsRes));
       if (!invRes.ok) throw new Error(await readError(invRes));
       const wsData = (await wsRes.json()) as { items: WorkspaceItem[] };
@@ -89,6 +92,14 @@ export default function WorkspacesPage() {
         body: JSON.stringify({ workspaceId: id }),
       });
       if (!res.ok) throw new Error(await readError(res));
+      const ws = workspaces.find((w) => w.id === id);
+      if (ws) {
+        writeWorkspaceUiCache({
+          id: ws.id,
+          nume: ws.nume,
+          poateModificaSetari: ws.poateModificaSetari,
+        });
+      }
       router.replace("/");
       router.refresh();
     } catch (e) {
@@ -107,6 +118,14 @@ export default function WorkspacesPage() {
         body: JSON.stringify({ nume: createName }),
       });
       if (!res.ok) throw new Error(await readError(res));
+      const created = (await res.json()) as { id?: string };
+      if (created.id) {
+        writeWorkspaceUiCache({
+          id: String(created.id),
+          nume: createName.trim(),
+          poateModificaSetari: true,
+        });
+      }
       router.replace("/setari?welcome=1");
       router.refresh();
     } catch (e) {

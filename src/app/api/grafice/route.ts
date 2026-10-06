@@ -129,6 +129,11 @@ export async function POST(request: Request) {
       Number.isInteger(foaieRaw) && foaieRaw >= 1 && foaieRaw <= 50
         ? foaieRaw
         : 1;
+    const pdfTemplateId =
+      typeof parsed.data.pdfTemplateId === "string" &&
+      parsed.data.pdfTemplateId.trim()
+        ? parsed.data.pdfTemplateId.trim()
+        : null;
 
     const snapshot = await buildGraficSnapshotFromDb(
       workspaceId,
@@ -136,6 +141,7 @@ export async function POST(request: Request) {
       luna,
       categorieId,
       foaie,
+      pdfTemplateId,
     );
     const foaieNume = await getFoaieNume(
       workspaceId,

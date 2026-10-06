@@ -15,7 +15,6 @@ import {
   arrayMove,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
-import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   useCallback,
@@ -27,6 +26,7 @@ import {
   type TouchEvent,
 } from "react";
 import { formatTexte, sanitizeFisierBase } from "@/lib/texteRegistry";
+import { handleUnauthorized } from "@/lib/authClient";
 import type { CreateAngajatResponse, LunaResponse } from "@/lib/types";
 import {
   culoareFromDb,
@@ -34,6 +34,10 @@ import {
 } from "@/lib/culoare";
 import { buildGraficTitleFromCategorie } from "@/lib/categorii";
 import { parseMonth, parseYear, parseFoaieParam } from "@/lib/validate";
+import {
+  DAY_COL_BASE_PX,
+  columnWidthForValues,
+} from "@/lib/cellText";
 import type { CodOption } from "@/lib/coduri";
 import { AddStaffDialog } from "./AddStaffDialog";
 import { CellFocus } from "./CellFocus";
@@ -207,6 +211,7 @@ function buildMonthQuery(
 }
 
 async function readError(res: Response): Promise<string> {
+  if (handleUnauthorized(res)) return "Neautentificat";
   try {
     const data = (await res.json()) as { error?: string };
     return data.error || `Eroare ${res.status}`;
@@ -215,11 +220,7 @@ async function readError(res: Response): Promise<string> {
   }
 }
 
-export function ScheduleGrid({
-  showSetari = false,
-}: {
-  showSetari?: boolean;
-}) {
+export function ScheduleGrid() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -944,7 +945,10 @@ export function ScheduleGrid({
     }
   }
 
-  async function exportGrafic(format: ExportFormat) {
+  async function exportGrafic(
+    format: ExportFormat,
+    pdfTemplateId?: string | null,
+  ) {
     if (!categorieId || exporting || loading) return;
     setExporting(true);
     setError(null);
@@ -952,7 +956,15 @@ export function ScheduleGrid({
       const saveRes = await fetch("/api/grafice", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ an: year, luna: month, categorieId, foaie }),
+        body: JSON.stringify({
+          an: year,
+          luna: month,
+          categorieId,
+          foaie,
+          ...(format === "pdf" && pdfTemplateId
+            ? { pdfTemplateId }
+            : {}),
+        }),
       });
       if (!saveRes.ok) throw new Error(await readError(saveRes));
       const saved = (await saveRes.json()) as { snapshot: GraficPdfData };
@@ -970,6 +982,7 @@ export function ScheduleGrid({
       const base =
         texteUi.exportBase ||
         `grafic-${(activeCategorie?.nume ?? "grafic")
+
           .normalize("NFD")
           .replace(/[\u0300-\u036f]/g, "")
           .toLowerCase()
@@ -1132,7 +1145,12 @@ export function ScheduleGrid({
 
   const [oreByCod, setOreByCod] = useState<OreCoduriByCod>({});
   const [cellOptions, setCellOptions] = useState<
-    Array<{ value: string; label: string; culoare?: string }>
+    Array<{
+      value: string;
+      label: string;
+      culoare?: string;
+      eticheta?: string;
+    }>
   >([]);
   const [permiteTextLiber, setPermiteTextLiber] = useState(false);
   const [culoareByCod, setCuloareByCod] = useState<Record<string, string>>(
@@ -1175,8 +1193,9 @@ export function ScheduleGrid({
         setCellOptions(
           (data.items ?? []).map((c) => ({
             value: c.cod,
-            label: c.eticheta || c.cod,
+            label: c.cod,
             culoare: c.culoare,
+            eticheta: c.eticheta,
           })),
         );
         setPermiteTextLiber(Boolean(data.permiteTextLiber));
@@ -1249,10 +1268,20 @@ export function ScheduleGrid({
 
   const titleMonth = monthLabel(year, monthIndex);
 
+  const dayColWidths = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const col of visibleColumns) {
+      const vals = staff.map((p) => grid[p.id]?.[col.key]?.valoare ?? "");
+      map[col.key] = columnWidthForValues(vals);
+    }
+    return map;
+  }, [visibleColumns, staff, grid]);
+
   const rowColumns = visibleColumns.map((col) => ({
     kind: "day" as const,
     key: col.key,
     weekend: col.weekend,
+    widthPx: dayColWidths[col.key] ?? DAY_COL_BASE_PX,
   }));
 
   function activateFromVisible(row: number, localCol: number) {
@@ -1345,28 +1374,10 @@ export function ScheduleGrid({
               disabled={loading || staff.length === 0}
               busy={exporting}
               label={`Export ${activeCategorie?.nume ?? "grafic"}`}
-              onSelect={(format) => void exportGrafic(format)}
+              onSelect={(format, pdfTemplateId) =>
+                void exportGrafic(format, pdfTemplateId)
+              }
             />
-            <Link
-              href="/istoric"
-              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-center text-sm font-medium text-slate-700 transition-colors duration-150 hover:border-sky-300 hover:bg-sky-50 hover:text-sky-800 sm:w-auto sm:py-2"
-            >
-              Arhivă →
-            </Link>
-            <Link
-              href="/concedii"
-              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-center text-sm font-medium text-slate-700 transition-colors duration-150 hover:border-sky-300 hover:bg-sky-50 hover:text-sky-800 sm:w-auto sm:py-2"
-            >
-              Zile CO →
-            </Link>
-            {showSetari && (
-              <Link
-                href="/setari"
-                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-center text-sm font-medium text-slate-700 transition-colors duration-150 hover:border-sky-300 hover:bg-sky-50 hover:text-sky-800 sm:w-auto sm:py-2"
-              >
-                Setări →
-              </Link>
-            )}
           </div>
         </header>
 
@@ -1438,7 +1449,8 @@ export function ScheduleGrid({
           onTouchEnd={onTouchEndGrid}
           className={[
             "rounded-xl border border-slate-200 outline-none focus-visible:ring-2 focus-visible:ring-sky-400/50",
-            isDesktop ? "overflow-x-auto" : "overflow-x-hidden touch-pan-y",
+            "overflow-x-auto",
+            isDesktop ? "" : "touch-pan-y",
           ].join(" ")}
         >
           <DndContext
@@ -1449,10 +1461,7 @@ export function ScheduleGrid({
             onDragCancel={() => setDraggingId(null)}
           >
             <table
-              className={[
-                "schedule-grid border-separate border-spacing-0 text-[15px]",
-                isDesktop ? "w-full" : "w-full table-fixed",
-              ].join(" ")}
+              className="schedule-grid w-max min-w-full border-separate border-spacing-0 text-[15px]"
             >
               <thead>
                 <tr>
@@ -1467,18 +1476,21 @@ export function ScheduleGrid({
                   >
                     {texteUi.tabelNume}
                   </th>
-                  {visibleColumns.map((col) => (
-                    <th
-                      key={`${col.key}-n`}
-                      className={[
-                        "border-0 border-r border-b border-b-slate-200 border-r-slate-300 px-0 py-1.5 text-center font-semibold text-slate-700",
-                        isDesktop ? "min-w-[2.1rem]" : "",
-                        col.weekend ? "bg-[#F5C09A]" : "bg-slate-50",
-                      ].join(" ")}
-                    >
-                      {col.day}
-                    </th>
-                  ))}
+                  {visibleColumns.map((col) => {
+                    const w = dayColWidths[col.key] ?? DAY_COL_BASE_PX;
+                    return (
+                      <th
+                        key={`${col.key}-n`}
+                        style={{ width: w, minWidth: w, maxWidth: w }}
+                        className={[
+                          "border-0 border-r border-b border-b-slate-200 border-r-slate-300 px-0 py-1.5 text-center font-semibold text-slate-700",
+                          col.weekend ? "bg-[#F5C09A]" : "bg-slate-50",
+                        ].join(" ")}
+                      >
+                        {col.day}
+                      </th>
+                    );
+                  })}
                   {isDesktop && (
                     <th
                       rowSpan={2}
@@ -1489,18 +1501,21 @@ export function ScheduleGrid({
                   )}
                 </tr>
                 <tr>
-                  {visibleColumns.map((col) => (
-                    <th
-                      key={`${col.key}-a`}
-                      className={[
-                        "border-0 border-r border-b border-b-slate-200 border-r-slate-300 px-0 py-1 text-center font-medium text-slate-500",
-                        isDesktop ? "min-w-[2.1rem]" : "",
-                        col.weekend ? "bg-[#F5C09A]" : "bg-white",
-                      ].join(" ")}
-                    >
-                      {col.abbr}
-                    </th>
-                  ))}
+                  {visibleColumns.map((col) => {
+                    const w = dayColWidths[col.key] ?? DAY_COL_BASE_PX;
+                    return (
+                      <th
+                        key={`${col.key}-a`}
+                        style={{ width: w, minWidth: w, maxWidth: w }}
+                        className={[
+                          "border-0 border-r border-b border-b-slate-200 border-r-slate-300 px-0 py-1 text-center font-medium text-slate-500",
+                          col.weekend ? "bg-[#F5C09A]" : "bg-white",
+                        ].join(" ")}
+                      >
+                        {col.abbr}
+                      </th>
+                    );
+                  })}
                 </tr>
               </thead>
               <SortableContext

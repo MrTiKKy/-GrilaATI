@@ -16,8 +16,8 @@ export type StaffMember = {
 };
 
 type ColumnForRow =
-  | { kind: "day"; key: string; weekend: boolean }
-  | { kind: "custom"; key: string };
+  | { kind: "day"; key: string; weekend: boolean; widthPx?: number }
+  | { kind: "custom"; key: string; widthPx?: number };
 
 type SortableStaffRowProps = {
   staff: StaffMember;
@@ -191,9 +191,15 @@ export function SortableStaffRow({
       {columns.map((col, colIndex) => {
         const isActive = activeCol === colIndex;
         const weekend = col.kind === "day" ? col.weekend : false;
+        const w = col.widthPx;
         return (
           <td
             key={`${staff.id}-${col.key}`}
+            style={
+              w
+                ? { width: w, minWidth: w, maxWidth: w }
+                : undefined
+            }
             className={[
               "border-0 border-r border-b border-b-slate-200 border-r-slate-300 p-0 align-middle",
               weekend ? "bg-[#F5C09A]" : "bg-white",

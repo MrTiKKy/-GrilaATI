@@ -128,6 +128,11 @@ export type GraficSnapshot = {
     pageHint: string;
     excelSheetName: string;
   };
+  /** Template PDF — lipsa + useLegacyLayout = PDF identic origin/main */
+  pdfTemplate?: import("@/lib/pdfTemplate").PdfTemplateSetari;
+  pdfTemplateVars?: import("@/lib/pdfTemplate").PdfTemplateVars;
+  /** true = fără template salvat → layout origin/main */
+  pdfUseLegacyLayout?: boolean;
 };
 
 export type GraficFinalMeta = {
@@ -149,6 +154,8 @@ export type CreateGraficBody = {
   categorieId: string;
   /** Sheet / foaie exportată */
   foaie?: number;
+  /** Template PDF opțional (altfel implicitul workspace) */
+  pdfTemplateId?: string | null;
 };
 
 export type GraficeListResponse = {

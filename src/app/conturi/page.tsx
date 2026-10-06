@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useState } from "react";
+import { handleUnauthorized } from "@/lib/authClient";
 
 type MeUser = {
   id: string;
@@ -63,6 +64,7 @@ export default function ConturiPage() {
         fetch("/api/conturi/me"),
         fetch("/api/conturi"),
       ]);
+      if (handleUnauthorized(meRes) || handleUnauthorized(listRes)) return;
       if (!meRes.ok) throw new Error(await readError(meRes));
       if (!listRes.ok) throw new Error(await readError(listRes));
       const meData = (await meRes.json()) as { user: MeUser };

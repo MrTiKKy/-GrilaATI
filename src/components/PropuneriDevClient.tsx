@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
+import { handleUnauthorized } from "@/lib/authClient";
 
 type PropunereListItem = {
   id: string;
@@ -81,6 +82,7 @@ export function PropuneriDevClient() {
       if (statusFilter) q.set("status", statusFilter);
       if (tipFilter) q.set("tip", tipFilter);
       const res = await fetch(`/api/propuneri?${q.toString()}`);
+      if (handleUnauthorized(res)) return;
       if (res.status === 404) {
         setError("Negăsit");
         return;
@@ -108,6 +110,7 @@ export function PropuneriDevClient() {
     setDetail(null);
     try {
       const res = await fetch(`/api/propuneri/${id}`);
+      if (handleUnauthorized(res)) return;
       if (!res.ok) throw new Error(`Eroare ${res.status}`);
       const data = (await res.json()) as { item: PropunereDetail };
       setDetail(data.item);

@@ -1,4 +1,5 @@
 import { getDb } from "@/lib/db";
+import { CELL_TEXT_MAX, parseCellText } from "@/lib/cellText";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -57,14 +58,19 @@ export function isSistemValue(v: string | null): v is "CO" | "CM" | "CIC" {
 }
 
 // ---------------------------------------------------------------------------
-// Free‐text validation  (trim, max 6 chars, no leading/trailing whitespace)
+// Free‐text validation  (trim, max CELL_TEXT_MAX, charset)
 // ---------------------------------------------------------------------------
 
 export function validateFreeText(raw: string): string | null {
-  const trimmed = raw.trim();
-  if (trimmed.length === 0) return null;
-  if (trimmed.length > 6) return null;
-  return trimmed;
+  const parsed = parseCellText(raw);
+  if (parsed === null) return null;
+  if (parsed === "") return null;
+  return parsed;
+}
+
+/** Cheia `coduri.cod` — max CELL_TEXT_MAX (CHECK DB), același charset ca eticheta. */
+export function validateCodKey(raw: string): string | null {
+  return parseCellText(raw);
 }
 
 // ---------------------------------------------------------------------------
@@ -270,7 +276,9 @@ export async function validateProgramareValoare(
 ): Promise<string | null> {
   const valoare = valoareRaw.trim();
   if (!valoare) return "Cod invalid";
-  if (valoare.length > 6) return "Codul are maxim 6 caractere";
+  if (valoare.length > CELL_TEXT_MAX) {
+    return `Maxim ${CELL_TEXT_MAX} caractere`;
+  }
 
   const sql = getDb();
   // Preferă match pe categorie specifică față de comun (NULLS LAST)
@@ -301,7 +309,7 @@ export async function validateProgramareValoare(
     return "Cod invalid pentru această categorie";
   }
   if (validateFreeText(valoare) !== valoare) {
-    return "Text liber invalid (max 6 caractere, fără spații la capete)";
+    return `Text liber invalid (max ${CELL_TEXT_MAX} caractere, fără spații la capete; litere/cifre/: - / * . ,)`;
   }
   return null;
 }

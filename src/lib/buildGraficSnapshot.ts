@@ -5,11 +5,13 @@ import {
   listOreCoduriForCategorie,
   rowsToByCod,
 } from "@/lib/oreCoduri";
+import { loadPdfTemplateForWorkspace } from "@/lib/pdfTemplate";
 import {
   buildTitluGrafic,
   dayAbbrList,
   formatCheie,
   getTexte,
+  lunaNume,
   lunaScurta,
 } from "@/lib/texte";
 import { toDateString, type GraficSnapshot } from "@/lib/types";
@@ -32,6 +34,7 @@ export async function buildGraficSnapshotFromDb(
   luna: number,
   categorieId: string,
   foaie = 1,
+  templateId?: string | null,
 ): Promise<GraficSnapshot> {
   const sql = getDb();
   const categorie = await getCategorie(workspaceId, categorieId);
@@ -43,13 +46,16 @@ export async function buildGraficSnapshotFromDb(
   const endDate = new Date(Date.UTC(an, luna, 1));
   const end = endDate.toISOString().slice(0, 10);
   const daysInMonth = new Date(an, luna, 0).getDate();
-  const [oreRows, footer, texte] = await Promise.all([
+  const [oreRows, footer, texte, pdfTpl, wsRows] = await Promise.all([
     listOreCoduriForCategorie(workspaceId, categorieId, { onlyActive: false }),
     loadGraficFooter(workspaceId),
     getTexte(workspaceId),
+    loadPdfTemplateForWorkspace(workspaceId, templateId),
+    sql`SELECT nume FROM workspaces WHERE id = ${workspaceId}::uuid LIMIT 1`,
   ]);
   const ratesByCod = rowsToByCod(oreRows);
   const abbrs = dayAbbrList(texte);
+  const workspaceNume = wsRows[0] ? String(wsRows[0].nume) : "";
 
   const days = Array.from({ length: daysInMonth }, (_, i) => {
     const day = i + 1;
@@ -122,5 +128,14 @@ export async function buildGraficSnapshotFromDb(
       }),
       excelSheetName: lunaScurta(texte, luna),
     },
+    pdfTemplate: pdfTpl.e_implicit ? undefined : pdfTpl.setari,
+    pdfTemplateVars: {
+      luna: lunaNume(texte, luna),
+      lunaNum: luna,
+      an,
+      categorie: categorie.nume,
+      workspace: workspaceNume,
+    },
+    pdfUseLegacyLayout: pdfTpl.e_implicit,
   };
 }

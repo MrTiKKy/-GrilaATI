@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import type { ConcediiResponse, ConcediuDto } from "@/lib/types";
+import { handleUnauthorized } from "@/lib/authClient";
 
 type CategorieTab = {
   id: string;
@@ -12,6 +13,7 @@ type CategorieTab = {
 };
 
 async function readError(res: Response): Promise<string> {
+  if (handleUnauthorized(res)) return "Neautentificat";
   try {
     const data = (await res.json()) as { error?: string };
     return data.error || `Eroare ${res.status}`;
@@ -335,6 +337,9 @@ export default function ConcediiPage() {
               <h1 className="mt-1 text-xl font-semibold tracking-tight text-slate-900">
                 Zile CO pe angajat
               </h1>
+              <p className="mt-1 text-sm text-slate-500">
+                Aici gestionezi alocarea pe zile de concediu (Zile CO).
+              </p>
             </div>
             <Link
               href="/"

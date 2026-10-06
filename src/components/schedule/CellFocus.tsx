@@ -2,6 +2,7 @@
 
 import type { CSSProperties } from "react";
 import { culoareHex, type ProgramareCuloare } from "@/lib/culoare";
+import { layoutCellText } from "@/lib/cellText";
 import type { SectieValoare } from "@/lib/types";
 
 type CellFocusProps = {
@@ -27,6 +28,7 @@ export function CellFocus({
   const sectie = ciorna === "A" || ciorna === "R" ? ciorna : null;
   const manual = culoare && culoare !== "black" ? culoareHex(culoare) : null;
   const color = manual || codCuloare || culoareHex("black");
+  const layout = layoutCellText(value);
 
   const activeRing: CSSProperties | undefined = active
     ? { boxShadow: "inset 0 0 0 2px rgb(14 165 233)" }
@@ -40,11 +42,12 @@ export function CellFocus({
         e.preventDefault();
       }}
       tabIndex={-1}
+      title={layout.truncated || value.length > 5 ? layout.title || value : undefined}
       data-cell-active={active ? "true" : undefined}
       style={activeRing}
       className={[
-        "flex h-full min-h-9 w-full min-w-[2.1rem] items-center justify-center gap-0.5 px-0",
-        "text-[15px] font-medium",
+        "flex h-full min-h-9 w-full items-center justify-center gap-0.5 px-0.5",
+        "font-medium",
         "transition-[background-color,box-shadow] duration-150 ease-out",
         "outline-none focus-visible:outline-none rounded-none",
         active
@@ -58,12 +61,22 @@ export function CellFocus({
     >
       <span
         className={[
-          "leading-none font-semibold",
+          "flex max-w-full flex-col items-center justify-center leading-tight font-semibold",
           value ? "" : sectie ? "text-slate-300" : "text-transparent",
         ].join(" ")}
-        style={value ? { color } : undefined}
+        style={
+          value
+            ? { color, fontSize: `${layout.fontSize}px` }
+            : { fontSize: `${layout.fontSize}px` }
+        }
       >
-        {value || "·"}
+        {value
+          ? layout.lines.map((line, i) => (
+              <span key={i} className="max-w-full truncate">
+                {line}
+              </span>
+            ))
+          : "·"}
       </span>
       {sectie && (
         <span className="draft-only text-[9px] font-bold leading-none text-amber-700">

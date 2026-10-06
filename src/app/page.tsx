@@ -11,16 +11,16 @@ import {
 export default async function Home() {
   const jar = await cookies();
   const user = await readSessionPayload(jar.get(SESSION_COOKIE)?.value);
+  if (!user) {
+    redirect("/login?next=/");
+  }
+
   const preferred = await getPreferredWorkspaceId();
-  const ws = user
-    ? await getActiveWorkspace(user.userId, preferred)
-    : null;
+  const ws = await getActiveWorkspace(user.userId, preferred);
 
   if (!ws) {
     redirect("/workspaces");
   }
-
-  const showSetari = Boolean(ws.poateModificaSetari);
 
   return (
     <main className="min-h-full flex-1 bg-slate-100 py-2 sm:py-4">
@@ -31,7 +31,7 @@ export default async function Home() {
           </div>
         }
       >
-        <ScheduleGrid showSetari={showSetari} />
+        <ScheduleGrid />
       </Suspense>
     </main>
   );

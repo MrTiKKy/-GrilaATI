@@ -42,7 +42,9 @@ export type AuditAction =
   | "invitatie_anulata"
   | "membru_rol"
   | "membru_scos"
-  | "workspace_creat";
+  | "workspace_creat"
+  | "export_template_upsert"
+  | "export_template_reset";
 
 export async function writeAudit(params: {
   action: AuditAction;

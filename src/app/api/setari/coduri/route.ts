@@ -4,17 +4,18 @@ import { guardSettings, isGuardError } from "@/lib/apiGuard";
 import { getDb } from "@/lib/db";
 import { clientKey } from "@/lib/rateLimit";
 import { readJsonLimited } from "@/lib/readJsonLimited";
-import { parseUuid, clampString } from "@/lib/validate";
+import { parseUuid } from "@/lib/validate";
 import {
   listAllCoduri,
   getCodById,
   isCodUsedInProgramari,
   isDuplicateCod,
   isSistem,
-  validateFreeText,
+  validateCodKey,
   type CodDto,
 } from "@/lib/coduri";
 import { listCategorii } from "@/lib/categorii";
+import { CELL_TEXT_MAX, cellTextError, parseCellText } from "@/lib/cellText";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -98,18 +99,26 @@ export async function POST(request: Request) {
     }>(request, 4_096);
     if (!parsed.ok) return parsed.response;
 
-    const cod = validateFreeText(String(parsed.data.cod ?? ""));
+    const cod = validateCodKey(String(parsed.data.cod ?? ""));
     if (!cod) {
       return NextResponse.json(
-        { error: "Codul este obligatoriu (max 6 caractere)" },
+        { error: `Codul este obligatoriu (max ${CELL_TEXT_MAX} caractere)` },
         { status: 400 },
       );
     }
 
-    const eticheta = clampString(parsed.data.eticheta, 80);
+    const etichetaRaw =
+      typeof parsed.data.eticheta === "string" && parsed.data.eticheta.trim()
+        ? parsed.data.eticheta
+        : cod;
+    const etichetaErr = cellTextError(etichetaRaw);
+    if (etichetaErr) {
+      return NextResponse.json({ error: `Etichetă: ${etichetaErr}` }, { status: 400 });
+    }
+    const eticheta = parseCellText(etichetaRaw);
     if (!eticheta) {
       return NextResponse.json(
-        { error: "Eticheta este obligatorie" },
+        { error: `Eticheta este obligatorie (max ${CELL_TEXT_MAX} caractere)` },
         { status: 400 },
       );
     }
@@ -338,14 +347,24 @@ export async function PUT(request: Request) {
           { status: 403 },
         );
       }
-      const e = clampString(parsed.data.eticheta, 80);
-      if (!e) {
+      const eParsed = parseCellText(String(parsed.data.eticheta ?? ""));
+      if (eParsed === null) {
+        return NextResponse.json(
+          {
+            error:
+              cellTextError(String(parsed.data.eticheta ?? "")) ??
+              `Etichetă invalidă (max ${CELL_TEXT_MAX})`,
+          },
+          { status: 400 },
+        );
+      }
+      if (!eParsed) {
         return NextResponse.json(
           { error: "Eticheta nu poate fi goală" },
           { status: 400 },
         );
       }
-      eticheta = e;
+      eticheta = eParsed;
     }
 
     // Activ toggle — reject deactivating sistem
@@ -367,10 +386,10 @@ export async function PUT(request: Request) {
           { status: 403 },
         );
       }
-      const newCod = validateFreeText(String(parsed.data.cod ?? ""));
+      const newCod = validateCodKey(String(parsed.data.cod ?? ""));
       if (!newCod) {
         return NextResponse.json(
-          { error: "Codul este obligatoriu (max 6 caractere)" },
+          { error: `Codul este obligatoriu (max ${CELL_TEXT_MAX} caractere)` },
           { status: 400 },
         );
       }

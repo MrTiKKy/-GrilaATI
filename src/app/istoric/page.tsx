@@ -15,8 +15,10 @@ import type {
   GraficFinalMeta,
   GraficeListResponse,
 } from "@/lib/types";
+import { handleUnauthorized } from "@/lib/authClient";
 
 async function readError(res: Response): Promise<string> {
+  if (handleUnauthorized(res)) return "Neautentificat";
   try {
     const data = (await res.json()) as { error?: string };
     return data.error || `Eroare ${res.status}`;

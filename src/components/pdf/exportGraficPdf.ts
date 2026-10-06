@@ -52,7 +52,13 @@ export async function downloadGraficPdf(data: GraficPdfData, fileName: string) {
   registerGraficPdfFonts(window.location.origin);
 
   const blob = await pdf(
-    createElement(GraficAtiPdf, { data }) as Parameters<typeof pdf>[0],
+    createElement(GraficAtiPdf, {
+      data: {
+        ...data,
+        template: data.template,
+        templateVars: data.templateVars,
+      },
+    }) as Parameters<typeof pdf>[0],
   ).toBlob();
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");

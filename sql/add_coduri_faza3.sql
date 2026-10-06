@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS coduri (
   sistem text NULL CHECK (sistem IS NULL OR sistem IN ('CO', 'CM', 'CIC')),
   comportament_vechi text NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
-  CONSTRAINT coduri_cod_len CHECK (char_length(cod) >= 1 AND char_length(cod) <= 6),
+  CONSTRAINT coduri_cod_len CHECK (char_length(cod) >= 1 AND char_length(cod) <= 20),
   CONSTRAINT coduri_categorie_workspace_fkey
     FOREIGN KEY (categorie_id, workspace_id)
     REFERENCES categorii (id, workspace_id)

@@ -11,6 +11,7 @@ import {
   TextRun,
   WidthType,
 } from "docx";
+import { splitCellDisplayLines } from "@/lib/cellText";
 import { mergeGraficFooter } from "@/lib/graficFooter";
 import { GRAFIC_FONT_DOCX } from "@/lib/graficTypography";
 import type { GraficSnapshot } from "@/lib/types";
@@ -29,6 +30,13 @@ const BORDERS = {
   right: THIN,
 };
 
+function cellFontForLines(lines: string[], base: number): number {
+  const longest = Math.max(...lines.map((l) => l.length), 1);
+  if (longest > 9) return Math.max(10, base - 4);
+  if (longest > 5) return Math.max(12, base - 2);
+  return base;
+}
+
 function cell(
   text: string,
   opts: {
@@ -40,28 +48,43 @@ function cell(
     borders?: typeof BORDERS;
     columnSpan?: number;
     fontSize?: number;
+    /** Rupe pe max 2 rânduri + micșorează fontul pentru valori lungi */
+    scheduleValue?: boolean;
   },
 ) {
+  const lines = opts.scheduleValue
+    ? [...splitCellDisplayLines(text)]
+    : [text];
+  const fontSize = opts.scheduleValue
+    ? cellFontForLines(lines, opts.fontSize ?? GRAFIC_FONT_DOCX.cell)
+    : (opts.fontSize ?? GRAFIC_FONT_DOCX.cell);
+
   return new TableCell({
     borders: opts.borders ?? BORDERS,
     width: { size: opts.width, type: WidthType.DXA },
     columnSpan: opts.columnSpan,
     shading: opts.weekend ? { fill: "D9D9D9" } : undefined,
-    children: [
-      new Paragraph({
-        alignment:
-          opts.center === false ? AlignmentType.LEFT : AlignmentType.CENTER,
-        children: [
-          new TextRun({
-            text,
-            bold: opts.bold,
-            italics: opts.italic,
-            size: opts.fontSize ?? GRAFIC_FONT_DOCX.cell,
-            font: "Times New Roman",
-          }),
-        ],
-      }),
-    ],
+    children: lines.map(
+      (line, i) =>
+        new Paragraph({
+          alignment:
+            opts.center === false ? AlignmentType.LEFT : AlignmentType.CENTER,
+          spacing: {
+            before: 0,
+            after: 0,
+            line: lines.length > 1 ? 200 : 240,
+          },
+          children: [
+            new TextRun({
+              text: line || (i === 0 ? "" : ""),
+              bold: opts.bold,
+              italics: opts.italic,
+              size: fontSize,
+              font: "Times New Roman",
+            }),
+          ],
+        }),
+    ),
   });
 }
 
@@ -130,6 +153,7 @@ export async function downloadGraficDocx(
               width: dayW,
               weekend: d.weekend,
               fontSize: GRAFIC_FONT_DOCX.cell,
+              scheduleValue: true,
             }),
           ),
           cell(row.osd || "", {

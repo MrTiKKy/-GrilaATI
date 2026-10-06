@@ -12,6 +12,7 @@ import {
   culoareHex,
   type ProgramareCuloare,
 } from "@/lib/culoare";
+import { CELL_TEXT_MAX, parseCellText } from "@/lib/cellText";
 import { SECTIE_VALUES, type SectieValoare } from "@/lib/types";
 /** Fallback hardcoded options — used when codes haven't loaded yet */
 export const CELL_OPTIONS = [
@@ -31,6 +32,8 @@ export type CellOptionItem = {
   value: string;
   label: string;
   culoare?: string;
+  /** Descriere opțională — nu se afișează ca text pe buton */
+  eticheta?: string;
 };
 
 export type PanelContext = {
@@ -131,6 +134,7 @@ export function CellOptionPopup({
           value: c.value,
           label: c.label,
           codCuloare: c.culoare ?? null,
+          eticheta: c.eticheta,
         })),
       ]
     : CELL_OPTIONS.map((o) => ({ ...o, codCuloare: null as string | null }));
@@ -247,10 +251,10 @@ export function CellOptionPopup({
   }
 
   function submitFreeText() {
-    const trimmed = freeTextValue.trim();
-    if (!trimmed || trimmed.length > 6) return;
+    const parsed = parseCellText(freeTextValue);
+    if (parsed === null || parsed === "") return;
     setFreeTextMode(false);
-    void commit({ valoare: trimmed, ciorna: sectie, culoare });
+    void commit({ valoare: parsed, ciorna: sectie, culoare });
   }
 
   function enterFreeTextMode() {
@@ -336,12 +340,20 @@ export function CellOptionPopup({
       <div className="mb-2 grid grid-cols-4 gap-1">
         {options.map((opt) => {
           const selected = draft === opt.value;
+          const tip =
+            "eticheta" in opt &&
+            opt.eticheta &&
+            opt.eticheta !== opt.label
+              ? opt.eticheta
+              : opt.label;
           return (
             <button
               key={opt.value || "__empty"}
               type="button"
               disabled={saving}
               onClick={() => pickValoare(opt.value)}
+              title={tip}
+              aria-label={tip}
               className={[
                 "rounded-lg border px-1 py-1.5 text-xs font-semibold",
                 "transition-colors duration-100 disabled:opacity-50",
@@ -365,34 +377,43 @@ export function CellOptionPopup({
       {permiteTextLiber && (
         <div className="mb-2">
           {freeTextMode ? (
-            <div className="flex gap-1">
-              <input
-                ref={freeTextRef}
-                type="text"
-                maxLength={6}
-                value={freeTextValue}
-                onChange={(e) => setFreeTextValue(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    submitFreeText();
+            <div className="space-y-1">
+              <div className="flex gap-1">
+                <input
+                  ref={freeTextRef}
+                  type="text"
+                  maxLength={CELL_TEXT_MAX}
+                  value={freeTextValue}
+                  onChange={(e) => setFreeTextValue(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      submitFreeText();
+                    }
+                    if (e.key === "Escape") {
+                      e.preventDefault();
+                      setFreeTextMode(false);
+                    }
+                  }}
+                  placeholder={`Max ${CELL_TEXT_MAX} car.`}
+                  className="flex-1 rounded-lg border border-slate-200 px-2 py-1.5 text-xs outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-400/20"
+                />
+                <button
+                  type="button"
+                  disabled={
+                    saving ||
+                    parseCellText(freeTextValue) === null ||
+                    parseCellText(freeTextValue) === ""
                   }
-                  if (e.key === "Escape") {
-                    e.preventDefault();
-                    setFreeTextMode(false);
-                  }
-                }}
-                placeholder="Max 6 car."
-                className="flex-1 rounded-lg border border-slate-200 px-2 py-1.5 text-xs outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-400/20"
-              />
-              <button
-                type="button"
-                disabled={saving || !freeTextValue.trim() || freeTextValue.trim().length > 6}
-                onClick={submitFreeText}
-                className="rounded-lg border border-sky-500 bg-sky-50 px-2 py-1.5 text-xs font-semibold text-sky-800 hover:bg-sky-100 disabled:opacity-50"
-              >
-                OK
-              </button>
+                  onClick={submitFreeText}
+                  className="rounded-lg border border-sky-500 bg-sky-50 px-2 py-1.5 text-xs font-semibold text-sky-800 hover:bg-sky-100 disabled:opacity-50"
+                >
+                  OK
+                </button>
+              </div>
+              <p className="text-right text-[10px] tabular-nums text-slate-500">
+                {freeTextValue.trim().length}/{CELL_TEXT_MAX}
+              </p>
             </div>
           ) : (
             <button

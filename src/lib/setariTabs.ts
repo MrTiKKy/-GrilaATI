@@ -5,6 +5,7 @@ export type SetariTabId =
   | "ore-pe-zile"
   | "foi"
   | "texte-export"
+  | "export-pdf"
   | "membri"
   | "propuneri";
 
@@ -33,7 +34,7 @@ export const SETARI_TABS: readonly SetariTab[] = [
   },
   {
     id: "ore-pe-zile",
-    label: "Ore",
+    label: "Ore O.SD",
     href: "/setari/ore",
     enabled: true,
   },
@@ -42,6 +43,12 @@ export const SETARI_TABS: readonly SetariTab[] = [
     id: "texte-export",
     label: "Texte",
     href: "/setari/texte",
+    enabled: true,
+  },
+  {
+    id: "export-pdf",
+    label: "Export PDF",
+    href: "/setari/export-pdf",
     enabled: true,
   },
   { id: "membri", label: "Membri", href: "/setari/membri", enabled: true },

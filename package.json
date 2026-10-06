@@ -20,6 +20,7 @@
     "docx": "^9.7.1",
     "exceljs": "^4.4.0",
     "jose": "^6.2.12",
+    "lucide-react": "^1.48.0",
     "next": "16.3.5",
     "react": "19.2.8",
     "react-dom": "19.2.8",
@@ -36,6 +37,7 @@
     "eslint-config-next": "16.3.5",
     "neonctl": "^6.2.3",
     "tailwindcss": "^4",
+    "tsx": "^4.23.15",
     "typescript": "^5"
   }
 }
