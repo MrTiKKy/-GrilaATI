@@ -102,7 +102,9 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: "culoare invalidă" }, { status: 400 });
     }
 
-    if (valoareRaw === null && ciorna === null) {
+    const fundalWeekend = Boolean(body.fundalWeekend);
+
+    if (valoareRaw === null && ciorna === null && !fundalWeekend) {
       await sql`
         DELETE FROM programari
         WHERE angajat_id = ${angajatId}::uuid
@@ -122,7 +124,9 @@ export async function PUT(request: Request) {
     }
 
     await sql`
-      INSERT INTO programari (workspace_id, angajat_id, data, valoare, ciorna, culoare, foaie)
+      INSERT INTO programari (
+        workspace_id, angajat_id, data, valoare, ciorna, culoare, fundal_weekend, foaie
+      )
       VALUES (
         ${workspaceId}::uuid,
         ${angajatId}::uuid,
@@ -130,19 +134,28 @@ export async function PUT(request: Request) {
         ${valoareRaw},
         ${ciorna},
         ${culoare},
+        ${fundalWeekend},
         ${foaie}
       )
       ON CONFLICT (angajat_id, data, foaie)
       DO UPDATE SET
         valoare = EXCLUDED.valoare,
         ciorna = EXCLUDED.ciorna,
-        culoare = EXCLUDED.culoare
+        culoare = EXCLUDED.culoare,
+        fundal_weekend = EXCLUDED.fundal_weekend
     `;
 
     await writeAudit({
       action: "programare_upsert",
       resource: angajatId,
-      detail: { data: body.data, valoare: valoareRaw, ciorna, culoare, foaie },
+      detail: {
+        data: body.data,
+        valoare: valoareRaw,
+        ciorna,
+        culoare,
+        fundalWeekend,
+        foaie,
+      },
       ip: clientKey(request),
       userId: user.userId,
       workspaceId,
@@ -154,6 +167,7 @@ export async function PUT(request: Request) {
       valoare: valoareRaw,
       ciorna,
       culoare: culoareFromDb(culoare),
+      fundalWeekend,
       foaie,
     });
   } catch (error) {

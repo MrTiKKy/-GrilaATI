@@ -19,6 +19,8 @@ export type GraficPdfRow = {
   name: string;
   cells: string[];
   osd: string;
+  /** Parallel cu cells: fundal portocaliu pe casuță */
+  cellWeekendBg?: boolean[];
 };
 
 export type GraficPdfData = {

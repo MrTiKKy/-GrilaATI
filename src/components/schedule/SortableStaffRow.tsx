@@ -4,6 +4,7 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { CSSProperties, ReactNode } from "react";
 import type { ProgramareCuloare } from "@/lib/culoare";
+import { cellHasWeekendBg } from "@/lib/weekendStyle";
 import { CellFocus } from "./CellFocus";
 
 export type StaffMember = {
@@ -25,7 +26,12 @@ type SortableStaffRowProps = {
   columns: ColumnForRow[];
   values: Record<
     string,
-    { valoare: string; ciorna: "A" | "R" | null; culoare: ProgramareCuloare }
+    {
+      valoare: string;
+      ciorna: "A" | "R" | null;
+      culoare: ProgramareCuloare;
+      fundalWeekend?: boolean;
+    }
   >;
   activeCol: number | null;
   onActivate: (row: number, col: number) => void;
@@ -190,7 +196,12 @@ export function SortableStaffRow({
       </th>
       {columns.map((col, colIndex) => {
         const isActive = activeCol === colIndex;
-        const weekend = col.kind === "day" ? col.weekend : false;
+        const dayWeekend = col.kind === "day" ? col.weekend : false;
+        const cellVal = values[col.key]?.valoare ?? "";
+        const weekend = cellHasWeekendBg(
+          dayWeekend,
+          values[col.key]?.fundalWeekend ?? false,
+        );
         const w = col.widthPx;
         return (
           <td
@@ -206,12 +217,10 @@ export function SortableStaffRow({
             ].join(" ")}
           >
             <CellFocus
-              value={values[col.key]?.valoare ?? ""}
+              value={cellVal}
               ciorna={values[col.key]?.ciorna ?? null}
               culoare={values[col.key]?.culoare ?? "black"}
-              codCuloare={
-                culoareByCod?.[values[col.key]?.valoare ?? ""] ?? null
-              }
+              codCuloare={culoareByCod?.[cellVal] ?? null}
               active={isActive}
               weekend={weekend}
               onClick={() => {

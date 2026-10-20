@@ -65,6 +65,10 @@ import {
 } from "@/lib/graficFooter";
 import { EditableFooterText } from "./EditableFooterText";
 import { totalOsdOre, osdBreakdown } from "@/lib/weekendOre";
+import {
+  cellHasWeekendBg,
+  fundalFromFlag,
+} from "@/lib/weekendStyle";
 import type { OreCoduriByCod } from "@/lib/oreCoduri";
 
 type CategorieTab = {
@@ -90,6 +94,7 @@ type CellData = {
   valoare: string;
   ciorna: "A" | "R" | null;
   culoare: ProgramareCuloare;
+  fundalWeekend: boolean;
 };
 
 // staffId -> columnKey (d-N) -> cell
@@ -149,7 +154,7 @@ function buildWeeks(days: DayColumn[]): DayColumn[][] {
 }
 
 function emptyCell(): CellData {
-  return { valoare: "", ciorna: null, culoare: "black" };
+  return { valoare: "", ciorna: null, culoare: "black", fundalWeekend: false };
 }
 
 function emptyRow(columns: DayColumn[]): Record<string, CellData> {
@@ -190,6 +195,7 @@ function mapLunaToState(
       valoare: p.valoare ?? "",
       ciorna: p.ciorna === "A" || p.ciorna === "R" ? p.ciorna : null,
       culoare: culoareFromDb(p.culoare),
+      fundalWeekend: Boolean(p.fundalWeekend),
     };
   }
 
@@ -874,6 +880,7 @@ export function ScheduleGrid() {
       valoare: payload.valoare,
       ciorna: payload.ciorna,
       culoare: payload.culoare,
+      fundalWeekend: payload.fundal === "weekend",
     };
 
     const wasCo = prev.valoare === "CO";
@@ -910,6 +917,7 @@ export function ScheduleGrid() {
           valoare: payload.valoare || null,
           ciorna: payload.ciorna,
           culoare: payload.culoare,
+          fundalWeekend: payload.fundal === "weekend",
           foaie,
         }),
       });
@@ -1136,6 +1144,7 @@ export function ScheduleGrid() {
       currentValue: cell.valoare,
       currentCiorna: cell.ciorna,
       currentCuloare: cell.culoare ?? "black",
+      currentFundal: fundalFromFlag(cell.fundalWeekend),
     };
   }, [active, columns, grid, staff, year, monthIndex]);
 
@@ -1581,7 +1590,10 @@ export function ScheduleGrid() {
                             ] ?? null
                           }
                           active={false}
-                          weekend={col.weekend}
+                          weekend={cellHasWeekendBg(
+                            col.weekend,
+                            grid[draggingStaff.id]?.[col.key]?.fundalWeekend,
+                          )}
                           onClick={() => {}}
                         />
                       </td>

@@ -34,6 +34,8 @@ export type ProgramareDto = {
   ciorna: SectieValoare | null;
   /** Culori text: black (default) | red | blue | green | yellow */
   culoare?: string | null;
+  /** Fundal portocaliu (ca weekend), independent de cod */
+  fundalWeekend?: boolean;
   /** Sheet / foaie (1 = Sheet 1) */
   foaie?: number;
 };
@@ -107,6 +109,8 @@ export type UpsertProgramareBody = {
   ciorna?: string | null;
   /** 'black' | 'red' | 'blue' | 'green' | 'yellow' | null */
   culoare?: string | null;
+  /** true = fundal portocaliu weekend pe casuță */
+  fundalWeekend?: boolean;
   /** Sheet / foaie, default 1 */
   foaie?: number;
 };
@@ -115,7 +119,13 @@ export type UpsertProgramareBody = {
 export type GraficSnapshot = {
   title: string;
   days: Array<{ day: number; abbr: string; weekend: boolean }>;
-  rows: Array<{ name: string; cells: string[]; osd: string }>;
+  rows: Array<{
+    name: string;
+    cells: string[];
+    osd: string;
+    /** Parallel cu cells: fundal portocaliu pe casuță (nu pe coloană) */
+    cellWeekendBg?: boolean[];
+  }>;
   footer?: {
     delegatName: string;
     delegatLabel: string;

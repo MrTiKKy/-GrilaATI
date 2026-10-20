@@ -32,6 +32,7 @@ import {
   dayNameRo,
   formatDayDate,
 } from "@/lib/pdfSplit";
+import { cellHasWeekendBg } from "@/lib/weekendStyle";
 
 /* ======================================================================== */
 /*  Public types                                                             */
@@ -47,6 +48,8 @@ export type GraficPdfRow = {
   name: string;
   cells: string[];
   osd: string;
+  /** Parallel cu cells: fundal portocaliu pe casuță */
+  cellWeekendBg?: boolean[];
 };
 
 export type GraficPdfData = {
@@ -1034,7 +1037,10 @@ export function GraficAtiPdfTemplated({ data }: { data: GraficPdfData }) {
                                   style={cellBox(
                                     cols.dayWs[i],
                                     rowH,
-                                    d.weekend,
+                                    cellHasWeekendBg(
+                                      d.weekend,
+                                      row.cellWeekendBg?.[i] ?? false,
+                                    ),
                                   )}
                                 >
                                   <Text

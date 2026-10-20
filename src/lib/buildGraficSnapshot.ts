@@ -80,7 +80,7 @@ export async function buildGraficSnapshotFromDb(
   `;
 
   const programariRows = await sql`
-    SELECT p.angajat_id, p.data::text AS data, p.valoare
+    SELECT p.angajat_id, p.data::text AS data, p.valoare, p.fundal_weekend
     FROM programari p
     INNER JOIN angajati a
       ON a.id = p.angajat_id
@@ -93,14 +93,17 @@ export async function buildGraficSnapshotFromDb(
       AND p.foaie = ${foaie}
   `;
 
-  const byStaffDay = new Map<string, string>();
+  const byStaffDay = new Map<string, { valoare: string; fundalWeekend: boolean }>();
   for (const row of programariRows) {
     const date = toDateString(row.data);
     const val =
       row.valoare === null || row.valoare === undefined || row.valoare === ""
         ? ""
         : String(row.valoare);
-    byStaffDay.set(`${String(row.angajat_id)}|${date}`, val);
+    byStaffDay.set(`${String(row.angajat_id)}|${date}`, {
+      valoare: val,
+      fundalWeekend: Boolean(row.fundal_weekend),
+    });
   }
 
   return {
@@ -108,7 +111,12 @@ export async function buildGraficSnapshotFromDb(
     days: days.map(({ day, abbr, weekend }) => ({ day, abbr, weekend })),
     rows: angajatiRows.map((row) => {
       const id = String(row.id);
-      const cells = days.map((d) => byStaffDay.get(`${id}|${d.date}`) ?? "");
+      const cells = days.map(
+        (d) => byStaffDay.get(`${id}|${d.date}`)?.valoare ?? "",
+      );
+      const cellWeekendBg = days.map(
+        (d) => byStaffDay.get(`${id}|${d.date}`)?.fundalWeekend ?? false,
+      );
       let osd = 0;
       for (let i = 0; i < days.length; i++) {
         osd += orePentruWeekday(days[i].weekday, cells[i], ratesByCod);
@@ -116,6 +124,7 @@ export async function buildGraficSnapshotFromDb(
       return {
         name: String(row.nume).toUpperCase(),
         cells,
+        cellWeekendBg,
         osd: osd > 0 ? String(osd) : "",
       };
     }),

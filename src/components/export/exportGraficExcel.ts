@@ -3,6 +3,7 @@ import { mergeGraficFooter } from "@/lib/graficFooter";
 import { GRAFIC_FONT } from "@/lib/graficTypography";
 import { splitCellDisplayLines } from "@/lib/cellText";
 import type { GraficSnapshot } from "@/lib/types";
+import { cellHasWeekendBg } from "@/lib/weekendStyle";
 import { downloadBlob } from "./downloadBlob";
 
 type ExcelBookType = "xlsx" | "xls";
@@ -203,7 +204,12 @@ async function buildExcelJsWorkbook(data: GraficSnapshot) {
         wrapText: true,
       };
       cell.border = allBorders;
-      if (data.days[i].weekend) {
+      if (
+        cellHasWeekendBg(
+          data.days[i].weekend,
+          row.cellWeekendBg?.[i] ?? false,
+        )
+      ) {
         cell.fill = {
           type: "pattern",
           pattern: "solid",
@@ -390,9 +396,13 @@ function buildHtmlXls(data: GraficSnapshot): string {
     });
     for (let i = 0; i < dayCount; i++) {
       const val = row.cells[i] || "";
+      const cellWeekend = cellHasWeekendBg(
+        data.days[i].weekend,
+        row.cellWeekendBg?.[i] ?? false,
+      );
       if (!val) {
         html += td("&nbsp;", {
-          weekend: data.days[i].weekend,
+          weekend: cellWeekend,
           raw: true,
           widthPx: dayWidths[i],
           heightPx: rowPx,
@@ -402,7 +412,7 @@ function buildHtmlXls(data: GraficSnapshot): string {
           esc(asLiteralScheduleValue(l)),
         );
         html += td(lines.join("<br/>"), {
-          weekend: data.days[i].weekend,
+          weekend: cellWeekend,
           raw: true,
           widthPx: dayWidths[i],
           heightPx: rowPx,

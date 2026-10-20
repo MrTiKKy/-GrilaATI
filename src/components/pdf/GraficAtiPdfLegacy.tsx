@@ -11,6 +11,7 @@ import {
   mergeGraficFooter,
   type GraficFooterTexts,
 } from "@/lib/graficFooter";
+import { cellHasWeekendBg } from "@/lib/weekendStyle";
 
 export type GraficPdfDay = {
   day: number;
@@ -23,6 +24,8 @@ export type GraficPdfRow = {
   /** Valori oficiale pe zile (fără A/R) */
   cells: string[];
   osd: string;
+  /** Parallel cu cells: fundal portocaliu pe casuță */
+  cellWeekendBg?: boolean[];
 };
 
 export type GraficPdfData = {
@@ -301,10 +304,14 @@ function StaffTableRows({
           {Array.from({ length: dayCount }, (_, i) => {
             const d = days[i];
             const value = row.cells[i] ?? "";
+            const weekendBg = cellHasWeekendBg(
+              d.weekend,
+              row.cellWeekendBg?.[i] ?? false,
+            );
             return (
               <View
                 key={`${rowOffset + idx}-${d.day}`}
-                style={[styles.dayCell, d.weekend ? styles.weekend : undefined]}
+                style={[styles.dayCell, weekendBg ? styles.weekend : undefined]}
               >
                 <Text style={[styles.cellText, { fontSize: f.cell }]}>
                   {value}

@@ -14,6 +14,10 @@ import {
 } from "@/lib/culoare";
 import { CELL_TEXT_MAX, parseCellText } from "@/lib/cellText";
 import { SECTIE_VALUES, type SectieValoare } from "@/lib/types";
+import {
+  WEEKEND_CELL_BG,
+  type CellFundal,
+} from "@/lib/weekendStyle";
 /** Fallback hardcoded options — used when codes haven't loaded yet */
 export const CELL_OPTIONS = [
   { value: "", label: "Gol" },
@@ -43,12 +47,14 @@ export type PanelContext = {
   currentValue: string;
   currentCiorna: SectieValoare | null;
   currentCuloare: ProgramareCuloare;
+  currentFundal: CellFundal;
 };
 
 export type ConfirmPayload = {
   valoare: string;
   ciorna: SectieValoare | null;
   culoare: ProgramareCuloare;
+  fundal: CellFundal;
 };
 
 type CellOptionPopupProps = {
@@ -117,6 +123,9 @@ export function CellOptionPopup({
   const [culoare, setCuloare] = useState<ProgramareCuloare>(
     context?.currentCuloare ?? "black",
   );
+  const [fundal, setFundal] = useState<CellFundal>(
+    context?.currentFundal ?? "alb",
+  );
   const [saving, setSaving] = useState(false);
   const [freeTextMode, setFreeTextMode] = useState(false);
   const [freeTextValue, setFreeTextValue] = useState("");
@@ -144,6 +153,7 @@ export function CellOptionPopup({
     setDraft(context.currentValue);
     setSectie(context.currentCiorna);
     setCuloare(context.currentCuloare ?? "black");
+    setFundal(context.currentFundal ?? "alb");
     setFreeTextMode(false);
     setFreeTextValue("");
     // eslint-disable-next-line react-hooks/exhaustive-deps -- cellKey
@@ -219,10 +229,12 @@ export function CellOptionPopup({
       valoare: draft,
       ciorna: sectie,
       culoare,
+      fundal,
     };
     setDraft(next.valoare);
     setSectie(next.ciorna);
     setCuloare(next.culoare);
+    setFundal(next.fundal);
     setSaving(true);
     try {
       const result = await onSelect(next);
@@ -230,6 +242,7 @@ export function CellOptionPopup({
         setDraft(rollback.valoare);
         setSectie(rollback.ciorna);
         setCuloare(rollback.culoare);
+        setFundal(rollback.fundal);
       }
     } finally {
       setSaving(false);
@@ -238,23 +251,27 @@ export function CellOptionPopup({
 
   function pickValoare(value: string) {
     setFreeTextMode(false);
-    void commit({ valoare: value, ciorna: sectie, culoare });
+    void commit({ valoare: value, ciorna: sectie, culoare, fundal });
   }
 
   function pickSectie(next: SectieValoare) {
     const ciorna = sectie === next ? null : next;
-    void commit({ valoare: draft, ciorna, culoare });
+    void commit({ valoare: draft, ciorna, culoare, fundal });
   }
 
   function pickCuloare(next: ProgramareCuloare) {
-    void commit({ valoare: draft, ciorna: sectie, culoare: next });
+    void commit({ valoare: draft, ciorna: sectie, culoare: next, fundal });
+  }
+
+  function pickFundal(next: CellFundal) {
+    void commit({ valoare: draft, ciorna: sectie, culoare, fundal: next });
   }
 
   function submitFreeText() {
     const parsed = parseCellText(freeTextValue);
     if (parsed === null || parsed === "") return;
     setFreeTextMode(false);
-    void commit({ valoare: parsed, ciorna: sectie, culoare });
+    void commit({ valoare: parsed, ciorna: sectie, culoare, fundal });
   }
 
   function enterFreeTextMode() {
@@ -300,11 +317,54 @@ export function CellOptionPopup({
         </button>
       </div>
 
-      <div className="mb-2 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-center text-sm font-semibold">
+      <div
+        className="mb-2 rounded-lg border border-slate-200 px-2 py-1.5 text-center text-sm font-semibold"
+        style={{
+          backgroundColor: fundal === "weekend" ? WEEKEND_CELL_BG : "#f8fafc",
+        }}
+      >
         <span style={{ color: previewColor }}>{draft || "·"}</span>
         {sectie && (
           <span className="draft-only ml-1 text-amber-700">{sectie}</span>
         )}
+      </div>
+
+      <p className="mb-1 text-[10px] font-medium tracking-wide text-slate-500 uppercase">
+        Fundal
+      </p>
+      <div className="mb-2 grid grid-cols-2 gap-1.5">
+        {(
+          [
+            { id: "alb" as const, label: "Alb", bg: "#ffffff" },
+            {
+              id: "weekend" as const,
+              label: "Portocaliu",
+              bg: WEEKEND_CELL_BG,
+            },
+          ] as const
+        ).map((opt) => {
+          const selected = fundal === opt.id;
+          return (
+            <button
+              key={opt.id}
+              type="button"
+              disabled={saving}
+              title={opt.label}
+              aria-label={opt.label}
+              aria-pressed={selected}
+              onClick={() => pickFundal(opt.id)}
+              className={[
+                "rounded-lg border-2 px-2 py-2 text-xs font-semibold transition-transform duration-100 disabled:opacity-50",
+                selected
+                  ? "scale-[1.02] border-slate-900 ring-2 ring-sky-400 ring-offset-1"
+                  : "border-slate-300 hover:scale-[1.01]",
+              ].join(" ")}
+              style={{ backgroundColor: opt.bg }}
+            >
+              {opt.label}
+            </button>
+          );
+        })}
       </div>
 
       <p className="mb-1 text-[10px] font-medium tracking-wide text-slate-500 uppercase">

@@ -93,7 +93,8 @@ export async function GET(request: Request) {
     `;
 
     const programariRows = await sql`
-      SELECT p.angajat_id, p.data::text AS data, p.valoare, p.ciorna, p.culoare, p.foaie
+      SELECT p.angajat_id, p.data::text AS data, p.valoare, p.ciorna, p.culoare,
+             p.fundal_weekend, p.foaie
       FROM programari p
       INNER JOIN angajati a
         ON a.id = p.angajat_id
@@ -140,6 +141,7 @@ export async function GET(request: Request) {
         valoare,
         ciorna,
         culoare: culoareFromDb(row.culoare),
+        fundalWeekend: Boolean(row.fundal_weekend),
         foaie: Number(row.foaie) || foaie,
       };
     });
