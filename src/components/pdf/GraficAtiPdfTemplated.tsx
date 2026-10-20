@@ -32,7 +32,10 @@ import {
   dayNameRo,
   formatDayDate,
 } from "@/lib/pdfSplit";
-import { cellHasWeekendBg } from "@/lib/weekendStyle";
+import {
+  cellHasWeekendBg,
+  columnHeaderHasWeekendBg,
+} from "@/lib/weekendStyle";
 
 /* ======================================================================== */
 /*  Public types                                                             */
@@ -740,6 +743,17 @@ export function GraficAtiPdfTemplated({ data }: { data: GraficPdfData }) {
   const weekendBg = layout.weekendColor;
   const spacerH = mmToPt(template.impartire.spatiu_mm);
 
+  /** Antet zi portocaliu: weekend SAU toată coloana cu fundal */
+  const headerWeekendByDay = new Map(
+    data.days.map((d, i) => [
+      d.day,
+      columnHeaderHasWeekendBg(
+        d.weekend,
+        data.rows.map((row) => row.cellWeekendBg?.[i] ?? false),
+      ),
+    ]),
+  );
+
   const absBox = (x: number, y: number, latime: number) => ({
     position: "absolute" as const,
     left: (layout.pageW * x) / 100,
@@ -899,7 +913,7 @@ export function GraficAtiPdfTemplated({ data }: { data: GraficPdfData }) {
                               style={cellBox(
                                 cols.dayWs[i],
                                 layout.headerH,
-                                d.weekend,
+                                headerWeekendByDay.get(d.day) ?? d.weekend,
                               )}
                             >
                               <Text
@@ -968,7 +982,7 @@ export function GraficAtiPdfTemplated({ data }: { data: GraficPdfData }) {
                               style={cellBox(
                                 cols.dayWs[i],
                                 layout.abbrH,
-                                d.weekend,
+                                headerWeekendByDay.get(d.day) ?? d.weekend,
                               )}
                             >
                               <Text

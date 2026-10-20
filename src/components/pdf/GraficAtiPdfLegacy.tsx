@@ -11,7 +11,10 @@ import {
   mergeGraficFooter,
   type GraficFooterTexts,
 } from "@/lib/graficFooter";
-import { cellHasWeekendBg } from "@/lib/weekendStyle";
+import {
+  cellHasWeekendBg,
+  columnHeaderHasWeekendBg,
+} from "@/lib/weekendStyle";
 
 export type GraficPdfDay = {
   day: number;
@@ -221,26 +224,37 @@ function chunkRows<T>(rows: T[], size: number): T[][] {
 
 function TableHeader({
   days,
+  rows,
   rowH,
   nameFont,
   osdLabel,
 }: {
   days: GraficPdfDay[];
+  rows: GraficPdfRow[];
   rowH: number;
   nameFont: number;
   osdLabel: string;
 }) {
   const f = fontsForRow(rowH, nameFont);
+  const headerWeekend = days.map((d, i) =>
+    columnHeaderHasWeekendBg(
+      d.weekend,
+      rows.map((row) => row.cellWeekendBg?.[i] ?? false),
+    ),
+  );
   return (
     <>
       <View style={[styles.row, { height: rowH }]}>
         <View style={styles.nameCell}>
           <Text style={[styles.headerText, { fontSize: f.header }]}> </Text>
         </View>
-        {days.map((d) => (
+        {days.map((d, i) => (
           <View
             key={`n-${d.day}`}
-            style={[styles.dayCell, d.weekend ? styles.weekend : undefined]}
+            style={[
+              styles.dayCell,
+              headerWeekend[i] ? styles.weekend : undefined,
+            ]}
           >
             <Text style={[styles.headerText, { fontSize: f.header }]}>
               {d.day}
@@ -257,10 +271,13 @@ function TableHeader({
         <View style={styles.nameCell}>
           <Text style={[styles.headerText, { fontSize: f.header }]}> </Text>
         </View>
-        {days.map((d) => (
+        {days.map((d, i) => (
           <View
             key={`a-${d.day}`}
-            style={[styles.dayCell, d.weekend ? styles.weekend : undefined]}
+            style={[
+              styles.dayCell,
+              headerWeekend[i] ? styles.weekend : undefined,
+            ]}
           >
             <Text style={[styles.abbrText, { fontSize: f.abbr }]}>{d.abbr}</Text>
           </View>
@@ -452,6 +469,7 @@ export function GraficAtiPdfLegacy({ data }: { data: GraficPdfData }) {
             <View style={styles.table}>
               <TableHeader
                 days={data.days}
+                rows={data.rows}
                 rowH={h}
                 nameFont={nameFont}
                 osdLabel={osdLabel}

@@ -15,6 +15,18 @@ export function cellHasWeekendBg(
   return dayWeekend || fundalWeekend;
 }
 
+/**
+ * Antet coloană (nr. zi + literă): portocaliu pe weekend SAU când
+ * toată coloana are fundal weekend pe fiecare rând.
+ */
+export function columnHeaderHasWeekendBg(
+  dayWeekend: boolean,
+  fundalFlags: readonly boolean[],
+): boolean {
+  if (dayWeekend) return true;
+  return fundalFlags.length > 0 && fundalFlags.every(Boolean);
+}
+
 export function fundalFromFlag(fundalWeekend: boolean): CellFundal {
   return fundalWeekend ? "weekend" : "alb";
 }

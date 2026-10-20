@@ -3,7 +3,10 @@ import { mergeGraficFooter } from "@/lib/graficFooter";
 import { GRAFIC_FONT } from "@/lib/graficTypography";
 import { splitCellDisplayLines } from "@/lib/cellText";
 import type { GraficSnapshot } from "@/lib/types";
-import { cellHasWeekendBg } from "@/lib/weekendStyle";
+import {
+  cellHasWeekendBg,
+  columnHeaderHasWeekendBg,
+} from "@/lib/weekendStyle";
 import { downloadBlob } from "./downloadBlob";
 
 type ExcelBookType = "xlsx" | "xls";
@@ -152,7 +155,19 @@ async function buildExcelJsWorkbook(data: GraficSnapshot) {
   }
   headerAbbr.getCell(lastCol).value = "";
 
-  function paintStaffOrHeaderRow(row: number, withWeekend: boolean) {
+  const headerWeekendByDay = data.days.map((d, i) =>
+    columnHeaderHasWeekendBg(
+      d.weekend,
+      data.rows.map((row) => row.cellWeekendBg?.[i] ?? false),
+    ),
+  );
+
+  function paintStaffOrHeaderRow(
+    row: number,
+    withWeekend: boolean,
+    /** Pentru antet: weekend pe zi SAU toată coloana cu fundal */
+    useHeaderWeekend = false,
+  ) {
     ws.getRow(row).height = ROW_HEIGHT;
     for (let col = 1; col <= lastCol; col++) {
       const dayIdx = col - 2;
@@ -160,7 +175,9 @@ async function buildExcelJsWorkbook(data: GraficSnapshot) {
         withWeekend &&
         dayIdx >= 0 &&
         dayIdx < dayCount &&
-        data.days[dayIdx].weekend;
+        (useHeaderWeekend
+          ? headerWeekendByDay[dayIdx]
+          : data.days[dayIdx].weekend);
       const cell = ws.getCell(row, col);
       cell.border = allBorders;
       cell.font = { name: "Calibri", size: GRAFIC_FONT.cell };
@@ -180,7 +197,7 @@ async function buildExcelJsWorkbook(data: GraficSnapshot) {
   }
 
   for (const headerRow of [3, 4]) {
-    paintStaffOrHeaderRow(headerRow, true);
+    paintStaffOrHeaderRow(headerRow, true, true);
   }
 
   // Angajați — portocaliu pe weekend; valori ca TEXT (1/3 ≠ dată)
@@ -355,13 +372,20 @@ function buildHtmlXls(data: GraficSnapshot): string {
     `<tr><td colspan="${lastCol}" style="height:6px;border:none"></td></tr>`,
   );
 
+  const headerWeekendByDay = data.days.map((d, i) =>
+    columnHeaderHasWeekendBg(
+      d.weekend,
+      data.rows.map((row) => row.cellWeekendBg?.[i] ?? false),
+    ),
+  );
+
   {
     let html = `<tr style="height:${rowPx}px">`;
     html += td("&nbsp;", { bold: true, heightPx: rowPx, raw: true });
     for (let i = 0; i < dayCount; i++) {
       html += td(String(data.days[i].day), {
         bold: true,
-        weekend: data.days[i].weekend,
+        weekend: headerWeekendByDay[i],
         asText: true,
         widthPx: dayWidths[i],
         heightPx: rowPx,
@@ -376,7 +400,7 @@ function buildHtmlXls(data: GraficSnapshot): string {
     for (let i = 0; i < dayCount; i++) {
       html += td(data.days[i].abbr, {
         bold: true,
-        weekend: data.days[i].weekend,
+        weekend: headerWeekendByDay[i],
         asText: true,
         widthPx: dayWidths[i],
         heightPx: rowPx,

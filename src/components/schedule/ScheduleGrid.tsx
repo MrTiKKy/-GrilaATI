@@ -67,6 +67,7 @@ import { EditableFooterText } from "./EditableFooterText";
 import { totalOsdOre, osdBreakdown } from "@/lib/weekendOre";
 import {
   cellHasWeekendBg,
+  columnHeaderHasWeekendBg,
   fundalFromFlag,
 } from "@/lib/weekendStyle";
 import type { OreCoduriByCod } from "@/lib/oreCoduri";
@@ -1286,6 +1287,18 @@ export function ScheduleGrid() {
     return map;
   }, [visibleColumns, staff, grid]);
 
+  /** Antet zi (nr + literă) portocaliu: weekend SAU toată coloana are fundal weekend. */
+  const columnHeaderWeekend = useMemo(() => {
+    const map: Record<string, boolean> = {};
+    for (const col of visibleColumns) {
+      const flags = staff.map(
+        (p) => grid[p.id]?.[col.key]?.fundalWeekend === true,
+      );
+      map[col.key] = columnHeaderHasWeekendBg(col.weekend, flags);
+    }
+    return map;
+  }, [visibleColumns, staff, grid]);
+
   const rowColumns = visibleColumns.map((col) => ({
     kind: "day" as const,
     key: col.key,
@@ -1487,13 +1500,14 @@ export function ScheduleGrid() {
                   </th>
                   {visibleColumns.map((col) => {
                     const w = dayColWidths[col.key] ?? DAY_COL_BASE_PX;
+                    const headerOrange = columnHeaderWeekend[col.key] ?? false;
                     return (
                       <th
                         key={`${col.key}-n`}
                         style={{ width: w, minWidth: w, maxWidth: w }}
                         className={[
                           "border-0 border-r border-b border-b-slate-200 border-r-slate-300 px-0 py-1.5 text-center font-semibold text-slate-700",
-                          col.weekend ? "bg-[#F5C09A]" : "bg-slate-50",
+                          headerOrange ? "bg-[#F5C09A]" : "bg-slate-50",
                         ].join(" ")}
                       >
                         {col.day}
@@ -1512,13 +1526,14 @@ export function ScheduleGrid() {
                 <tr>
                   {visibleColumns.map((col) => {
                     const w = dayColWidths[col.key] ?? DAY_COL_BASE_PX;
+                    const headerOrange = columnHeaderWeekend[col.key] ?? false;
                     return (
                       <th
                         key={`${col.key}-a`}
                         style={{ width: w, minWidth: w, maxWidth: w }}
                         className={[
                           "border-0 border-r border-b border-b-slate-200 border-r-slate-300 px-0 py-1 text-center font-medium text-slate-500",
-                          col.weekend ? "bg-[#F5C09A]" : "bg-white",
+                          headerOrange ? "bg-[#F5C09A]" : "bg-white",
                         ].join(" ")}
                       >
                         {col.abbr}
