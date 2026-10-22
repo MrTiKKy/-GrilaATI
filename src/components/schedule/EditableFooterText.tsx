@@ -1,7 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { GraficFooterKey } from "@/lib/graficFooter";
+import {
+  formatFooterSignatureLines,
+  type GraficFooterKey,
+} from "@/lib/graficFooter";
 
 async function readError(res: Response): Promise<string> {
   try {
@@ -136,7 +139,11 @@ export function EditableFooterText({
       onMouseLeave={cancelSchedule}
       className={`group w-full min-w-0 rounded-lg border border-transparent px-2 py-1 text-[11px] font-medium tracking-wide text-slate-600 uppercase transition-colors hover:border-sky-200 hover:bg-sky-50 hover:text-slate-900 ${alignClass} ${italic ? "italic" : ""} ${className}`}
     >
-      <span className="block truncate">{value}</span>
+      <span className="block whitespace-pre-line leading-snug">
+        {fieldKey === "medic_sef" || fieldKey === "as_sef"
+          ? formatFooterSignatureLines(value)
+          : value}
+      </span>
     </button>
   );
 }

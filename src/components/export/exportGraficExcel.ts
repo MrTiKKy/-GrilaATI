@@ -1,5 +1,8 @@
 import type { GraficFooterTexts } from "@/lib/graficFooter";
-import { mergeGraficFooter } from "@/lib/graficFooter";
+import {
+  formatFooterSignatureLines,
+  mergeGraficFooter,
+} from "@/lib/graficFooter";
 import { GRAFIC_FONT } from "@/lib/graficTypography";
 import { splitCellDisplayLines } from "@/lib/cellText";
 import type { GraficSnapshot } from "@/lib/types";
@@ -268,19 +271,27 @@ async function buildExcelJsWorkbook(data: GraficSnapshot) {
   setTextCell(delegatCell, footer.delegatLabel, { size: GRAFIC_FONT.cell });
   delegatCell.border = allBorders;
 
-  // Semnături SUB tabel
+  // Semnături SUB tabel (funcție; + nume pe 2 rânduri)
   r = delegatRow + 2;
-  ws.getRow(r).height = 18;
+  ws.getRow(r).height = 28;
   const medicCell = ws.getCell(r, 1);
-  medicCell.value = footer.medicSef;
+  medicCell.value = formatFooterSignatureLines(footer.medicSef);
   medicCell.font = { name: "Calibri", size: GRAFIC_FONT.footer, italic: true };
-  medicCell.alignment = { horizontal: "left", vertical: "middle" };
+  medicCell.alignment = {
+    horizontal: "left",
+    vertical: "top",
+    wrapText: true,
+  };
 
   const asCol = Math.max(2, lastCol - 8);
   const asCell = ws.getCell(r, asCol);
-  asCell.value = footer.asSef;
+  asCell.value = formatFooterSignatureLines(footer.asSef);
   asCell.font = { name: "Calibri", size: GRAFIC_FONT.footer, italic: true };
-  asCell.alignment = { horizontal: "left", vertical: "middle" };
+  asCell.alignment = {
+    horizontal: "left",
+    vertical: "top",
+    wrapText: true,
+  };
 
   return wb;
 }
@@ -482,17 +493,29 @@ function buildHtmlXls(data: GraficSnapshot): string {
   rows.push(
     `<tr><td colspan="${lastCol}" style="height:12px;border:none"></td></tr>`,
   );
+  const medicHtml = esc(formatFooterSignatureLines(footer.medicSef)).replace(
+    /\n/g,
+    "<br/>",
+  );
+  const asHtml = esc(formatFooterSignatureLines(footer.asSef)).replace(
+    /\n/g,
+    "<br/>",
+  );
   rows.push(
-    `<tr>${td(footer.medicSef, {
+    `<tr>${td(medicHtml, {
       italic: true,
       align: "left",
       noBorder: true,
       colspan: Math.ceil(lastCol / 2),
-    })}${td(footer.asSef, {
+      raw: true,
+      heightPx: 36,
+    })}${td(asHtml, {
       italic: true,
       align: "right",
       noBorder: true,
       colspan: Math.floor(lastCol / 2),
+      raw: true,
+      heightPx: 36,
     })}</tr>`,
   );
 

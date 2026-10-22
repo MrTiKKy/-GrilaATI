@@ -8,6 +8,7 @@ import {
 } from "@react-pdf/renderer";
 import {
   GRAFIC_FOOTER_DEFAULTS,
+  footerSignatureLineList,
   mergeGraficFooter,
   type GraficFooterTexts,
 } from "@/lib/graficFooter";
@@ -458,8 +459,7 @@ export function GraficAtiPdfLegacy({ data }: { data: GraficPdfData }) {
         return (
           <Page
             key={`page-${pageIndex}`}
-            size="A4"
-            orientation="landscape"
+            size={[PAGE_W, PAGE_H]}
             style={styles.page}
             wrap={false}
           >
@@ -500,10 +500,18 @@ export function GraficAtiPdfLegacy({ data }: { data: GraficPdfData }) {
             {includeDelegatBlock && (
               <View style={styles.footer}>
                 <View style={styles.footerCol}>
-                  <Text style={styles.footerText}>{footer.medicSef}</Text>
+                  {footerSignatureLineList(footer.medicSef).map((line, i) => (
+                    <Text key={`medic-${i}`} style={styles.footerText}>
+                      {line}
+                    </Text>
+                  ))}
                 </View>
                 <View style={[styles.footerCol, { alignItems: "flex-end" }]}>
-                  <Text style={styles.footerText}>{footer.asSef}</Text>
+                  {footerSignatureLineList(footer.asSef).map((line, i) => (
+                    <Text key={`as-${i}`} style={styles.footerText}>
+                      {line}
+                    </Text>
+                  ))}
                 </View>
               </View>
             )}

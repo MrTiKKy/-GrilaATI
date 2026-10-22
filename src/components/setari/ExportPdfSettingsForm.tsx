@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   Columns2,
   FileText,
@@ -24,9 +25,16 @@ import {
   Trash2,
   Star,
 } from "lucide-react";
+import { parseMonth, parseYear } from "@/lib/validate";
+import {
+  readGraficViewCache,
+  writeGraficViewCache,
+} from "@/lib/workspaceUiCache";
 import {
   DEFAULT_PDF_TEMPLATE,
   PDF_MARGIN_PRESETS,
+  PDF_TABEL_SCARA_MAX,
+  PDF_TABEL_SCARA_MIN,
   detectMarginPreset,
   mergePdfTemplate,
   type PdfAliniere,
@@ -284,8 +292,19 @@ function TabTabel({
 
   return (
     <div className="space-y-4">
-      <SliderField label="Scară" value={draft.tabel.scara} min={60} max={120} unit="%" disabled={busy}
-        onChange={(n) => patch((d) => { d.tabel.scara = n; })} />
+      <SliderField
+        label="Scale"
+        value={draft.tabel.scara}
+        min={PDF_TABEL_SCARA_MIN}
+        max={PDF_TABEL_SCARA_MAX}
+        unit="%"
+        disabled={busy}
+        onChange={(n) => patch((d) => { d.tabel.scara = n; })}
+        title="Micșorează / mărește tot tabelul (lățime + font + rânduri). Poți trage și colțul din dreapta-jos pe canvas."
+      />
+      <p className="text-[10px] leading-snug text-slate-500">
+        Trage tabelul pe pagină ca să-l muți. Colțul din dreapta-jos = scale.
+      </p>
 
       <SliderField label="Font" value={draft.tabel.font_pt} min={5} max={14} step={0.5} unit=" pt" disabled={busy}
         onChange={(n) => patch((d) => { d.tabel.font_pt = n; })} />
@@ -786,7 +805,12 @@ export function ExportPdfSettingsForm() {
   const [previewTitle, setPreviewTitle] = useState("Grafic");
   const [previewDays, setPreviewDays] = useState<PreviewDay[]>([]);
   const [previewRows, setPreviewRows] = useState<PreviewRow[]>([]);
-  const [previewFooter, setPreviewFooter] = useState({ medicSef: "Medic șef", asSef: "As. șef" });
+  const [previewFooter, setPreviewFooter] = useState({
+    medicSef: "Medic șef",
+    asSef: "As. șef",
+    delegatName: "",
+    delegatLabel: "DELEGAT",
+  });
   const [previewVars, setPreviewVars] = useState<PdfTemplateVars>({});
   const [tplMenuOpen, setTplMenuOpen] = useState(false);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
@@ -799,10 +823,51 @@ export function ExportPdfSettingsForm() {
   const dirty = !deepEqual(draft, saved);
   const busy = loading || saving;
 
-  const now = useMemo(() => new Date(), []);
-  const an = now.getFullYear();
-  const luna = now.getMonth() + 1;
+  const searchParams = useSearchParams();
+  const [an, setAn] = useState(() => {
+    const now = new Date();
+    return now.getFullYear();
+  });
+  const [luna, setLuna] = useState(() => {
+    const now = new Date();
+    return now.getMonth() + 1;
+  });
+  const [monthReady, setMonthReady] = useState(false);
   const daysInMonth = new Date(an, luna, 0).getDate();
+
+  /* Luna din URL → ultima lună de pe grilă → azi */
+  useEffect(() => {
+    const fromUrlAn = parseYear(searchParams.get("an"));
+    const fromUrlLuna = parseMonth(searchParams.get("luna"));
+    const cached = readGraficViewCache();
+    setAn(fromUrlAn ?? cached?.an ?? new Date().getFullYear());
+    setLuna(fromUrlLuna ?? cached?.luna ?? new Date().getMonth() + 1);
+    setMonthReady(true);
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (!monthReady) return;
+    writeGraficViewCache({
+      an,
+      luna,
+      ...(categorieId ? { categorieId } : {}),
+    });
+  }, [an, luna, categorieId, monthReady]);
+
+  function goPreviewMonth(delta: number) {
+    const d = new Date(an, luna - 1 + delta, 1);
+    setAn(d.getFullYear());
+    setLuna(d.getMonth() + 1);
+  }
+
+  const lunaLabel = useMemo(
+    () =>
+      new Date(an, luna - 1, 1).toLocaleDateString("ro-RO", {
+        month: "long",
+        year: "numeric",
+      }),
+    [an, luna],
+  );
 
   /* ---- undo / redo ---- */
   const pushHistory = useCallback((prev: PdfTemplateSetari) => {
@@ -949,7 +1014,11 @@ export function ExportPdfSettingsForm() {
           const cats = (await catRes.json()) as { items?: CategorieOpt[] };
           const list = cats.items ?? [];
           setCategorii(list);
-          if (list[0]) setCategorieId(list[0].id);
+          const cachedCat = readGraficViewCache()?.categorieId;
+          const preferred =
+            (cachedCat && list.find((c) => c.id === cachedCat)?.id) ||
+            list[0]?.id;
+          if (preferred) setCategorieId(preferred);
         }
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : "Încărcare eșuată");
@@ -1010,12 +1079,19 @@ export function ExportPdfSettingsForm() {
 
         if (footerRes.ok) {
           const fj = (await footerRes.json()) as {
-            footer?: { medicSef?: string; asSef?: string };
+            footer?: {
+              medicSef?: string;
+              asSef?: string;
+              delegatName?: string;
+              delegatLabel?: string;
+            };
           };
           if (fj.footer) {
             setPreviewFooter({
               medicSef: fj.footer.medicSef ?? "Medic șef",
               asSef: fj.footer.asSef ?? "As. șef",
+              delegatName: fj.footer.delegatName ?? "",
+              delegatLabel: fj.footer.delegatLabel ?? "DELEGAT",
             });
           }
         }
@@ -1330,8 +1406,8 @@ export function ExportPdfSettingsForm() {
           footer: {
             medicSef: previewFooter.medicSef,
             asSef: previewFooter.asSef,
-            delegatName: "",
-            delegatLabel: "",
+            delegatName: previewFooter.delegatName,
+            delegatLabel: previewFooter.delegatLabel,
           },
           template: draft,
           templateVars: tplVars,
@@ -1468,6 +1544,33 @@ export function ExportPdfSettingsForm() {
         </button>
 
         <span className="mx-1 h-4 w-px bg-slate-200" />
+
+        <div className="flex items-center gap-0.5">
+          <button
+            type="button"
+            onClick={() => goPreviewMonth(-1)}
+            className="rounded p-1 text-slate-600 hover:bg-slate-100"
+            title="Luna anterioară"
+            aria-label="Luna anterioară"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </button>
+          <span
+            className="min-w-[7.5rem] text-center text-xs font-medium capitalize text-slate-700 tabular-nums"
+            title="Luna folosită la preview (aceeași ca pe grilă)"
+          >
+            {lunaLabel}
+          </span>
+          <button
+            type="button"
+            onClick={() => goPreviewMonth(1)}
+            className="rounded p-1 text-slate-600 hover:bg-slate-100"
+            title="Luna următoare"
+            aria-label="Luna următoare"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </button>
+        </div>
 
         {categorii.length > 0 && (
           <select

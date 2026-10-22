@@ -62,3 +62,59 @@ export function workspaceInitial(nume: string): string {
   if (!t) return "?";
   return t.charAt(0).toLocaleUpperCase("ro-RO");
 }
+
+/** Ultima lună/categorie văzută pe grilă — folosită la preview Export PDF. */
+export const GRAFIC_VIEW_CACHE_KEY = "grila_grafic_view";
+
+export type GraficViewCache = {
+  an: number;
+  luna: number;
+  categorieId?: string;
+};
+
+export function readGraficViewCache(): GraficViewCache | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(GRAFIC_VIEW_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as GraficViewCache;
+    if (
+      typeof parsed?.an !== "number" ||
+      !Number.isInteger(parsed.an) ||
+      parsed.an < 2000 ||
+      parsed.an > 2100 ||
+      typeof parsed?.luna !== "number" ||
+      !Number.isInteger(parsed.luna) ||
+      parsed.luna < 1 ||
+      parsed.luna > 12
+    ) {
+      return null;
+    }
+    return {
+      an: parsed.an,
+      luna: parsed.luna,
+      categorieId:
+        typeof parsed.categorieId === "string" && parsed.categorieId
+          ? parsed.categorieId
+          : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function writeGraficViewCache(view: GraficViewCache): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(
+      GRAFIC_VIEW_CACHE_KEY,
+      JSON.stringify({
+        an: view.an,
+        luna: view.luna,
+        ...(view.categorieId ? { categorieId: view.categorieId } : {}),
+      }),
+    );
+  } catch {
+    // ignore
+  }
+}

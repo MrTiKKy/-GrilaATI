@@ -71,6 +71,7 @@ import {
   fundalFromFlag,
 } from "@/lib/weekendStyle";
 import type { OreCoduriByCod } from "@/lib/oreCoduri";
+import { writeGraficViewCache } from "@/lib/workspaceUiCache";
 
 type CategorieTab = {
   id: string;
@@ -286,6 +287,14 @@ export function ScheduleGrid() {
   }, [categories, categorieParam]);
 
   const categorieId = activeCategorie?.id ?? null;
+
+  useEffect(() => {
+    writeGraficViewCache({
+      an: year,
+      luna: month,
+      ...(categorieId ? { categorieId } : {}),
+    });
+  }, [year, month, categorieId]);
 
   // Legacy ?tab= → ?categorie= sau completează an/luna/categorie
   useEffect(() => {

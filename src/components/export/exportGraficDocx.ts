@@ -12,7 +12,10 @@ import {
   WidthType,
 } from "docx";
 import { splitCellDisplayLines } from "@/lib/cellText";
-import { mergeGraficFooter } from "@/lib/graficFooter";
+import {
+  formatFooterSignatureLines,
+  mergeGraficFooter,
+} from "@/lib/graficFooter";
 import { GRAFIC_FONT_DOCX } from "@/lib/graficTypography";
 import type { GraficSnapshot } from "@/lib/types";
 import { downloadBlob } from "./downloadBlob";
@@ -253,25 +256,33 @@ export async function downloadGraficDocx(
           new Paragraph({ spacing: { before: 200 }, children: [] }),
           new Paragraph({
             alignment: AlignmentType.LEFT,
-            children: [
-              new TextRun({
-                text: footer.medicSef,
-                italics: true,
-                size: GRAFIC_FONT_DOCX.footer,
-                font: "Times New Roman",
-              }),
-            ],
+            children: formatFooterSignatureLines(footer.medicSef)
+              .split("\n")
+              .map(
+                (line, i) =>
+                  new TextRun({
+                    text: line,
+                    break: i > 0 ? 1 : undefined,
+                    italics: true,
+                    size: GRAFIC_FONT_DOCX.footer,
+                    font: "Times New Roman",
+                  }),
+              ),
           }),
           new Paragraph({
             alignment: AlignmentType.RIGHT,
-            children: [
-              new TextRun({
-                text: footer.asSef,
-                italics: true,
-                size: GRAFIC_FONT_DOCX.footer,
-                font: "Times New Roman",
-              }),
-            ],
+            children: formatFooterSignatureLines(footer.asSef)
+              .split("\n")
+              .map(
+                (line, i) =>
+                  new TextRun({
+                    text: line,
+                    break: i > 0 ? 1 : undefined,
+                    italics: true,
+                    size: GRAFIC_FONT_DOCX.footer,
+                    font: "Times New Roman",
+                  }),
+              ),
           }),
         ],
       },

@@ -11,6 +11,9 @@ import {
 import {
   a4SizePt,
   applyPdfTemplateVars,
+  PDF_TABEL_SCARA_MAX,
+  PDF_TABEL_SCARA_MIN,
+  tabelLatimeEfectiva,
   type PdfTemplateSetari,
   type PdfTemplateVars,
 } from "@/lib/pdfTemplate";
@@ -22,6 +25,7 @@ import {
   slicePartData,
   type PdfDayPart,
 } from "@/lib/pdfSplit";
+import { formatFooterSignatureLines } from "@/lib/graficFooter";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -62,7 +66,12 @@ type PdfDragPreviewProps = {
   title: string;
   days: PreviewDay[];
   rows: PreviewRow[];
-  footer: { medicSef: string; asSef: string };
+  footer: {
+    medicSef: string;
+    asSef: string;
+    delegatName?: string;
+    delegatLabel?: string;
+  };
   vars: PdfTemplateVars;
   selected: DragTarget | null;
   onSelect: (t: DragTarget | null) => void;
@@ -152,11 +161,37 @@ export function PdfDragPreview({
       : title
     : "";
 
-  /* ---- scaling / font ---- */
+  /* ---- scaling / font — scara = scale pe cutie + conținut ---- */
   const tblScale = setari.tabel.scara / 100;
+  const tabelW = tabelLatimeEfectiva(setari.tabel);
   const cellFs = setari.tabel.font_pt * tblScale;
-  const border = `${setari.tabel.grosime_linii}px solid #000`;
-  const rowH = setari.tabel.inaltime_rand * tblScale;
+  const border = `${Math.max(0.4, setari.tabel.grosime_linii * tblScale)}px solid #000`;
+  const rowHBase = setari.tabel.inaltime_rand * tblScale;
+  const headerH = rowHBase * (12 / 14);
+  const abbrH = rowHBase * (11 / 14);
+  const emptyH = rowHBase;
+  const delegatH = rowHBase * (16 / 14);
+
+  /** Stretch ca în PDF când tabel_compact=false — rezervă spațiu pentru footer */
+  const staffRowH = (() => {
+    if (setari.pagina.tabel_compact) return rowHBase;
+    const contentTop = (page.h * setari.tabel.y) / 100;
+    const footerTop = setari.footer.afisat
+      ? (page.h * setari.footer.y) / 100
+      : page.h;
+    const contentBottom = Math.max(contentTop + rowHBase, footerTop - 6);
+    const nParts = isMultiPage ? 1 : parts.length;
+    const headersTotal = nParts * (headerH + abbrH);
+    const spacer =
+      !isMultiPage && parts.length > 1
+        ? ((setari.impartire.spatiu_mm / 25.4) * 72) * (parts.length - 1)
+        : 0;
+    const trailing = emptyH + delegatH;
+    const staffN = Math.max(1, rows.length);
+    const budget =
+      contentBottom - contentTop - headersTotal - spacer - trailing;
+    return Math.max(rowHBase * 0.75, budget / staffN);
+  })();
 
   /* ---- drag state ---- */
   const dragRef = useRef<{
@@ -164,7 +199,14 @@ export function PdfDragPreview({
     mode: "move" | "resize";
     startX: number;
     startY: number;
-    orig: { x: number; y: number; latime: number; scara: number };
+    orig: {
+      x: number;
+      y: number;
+      latime: number;
+      scara: number;
+      /** latime bază (fără scara) — doar pentru tabel */
+      baseLatime: number;
+    };
     alt: boolean;
   } | null>(null);
 
@@ -214,7 +256,12 @@ export function PdfDragPreview({
     if (t === "titlu")
       return { x: setari.titlu.x, y: setari.titlu.y, latime: setari.titlu.latime, h: 4 };
     if (t === "tabel")
-      return { x: setari.tabel.x, y: setari.tabel.y, latime: setari.tabel.latime, h: 70 };
+      return {
+        x: setari.tabel.x,
+        y: setari.tabel.y,
+        latime: tabelLatimeEfectiva(setari.tabel),
+        h: 70,
+      };
     if (t === "footer")
       return { x: setari.footer.x, y: setari.footer.y, latime: setari.footer.latime, h: 4 };
     const i = Number(t.split(":")[1]);
@@ -275,7 +322,13 @@ export function PdfDragPreview({
     dragRef.current = {
       target, mode,
       startX: e.clientX, startY: e.clientY,
-      orig: { x: box.x, y: box.y, latime: box.latime, scara: setari.tabel.scara },
+      orig: {
+        x: box.x,
+        y: box.y,
+        latime: box.latime,
+        scara: setari.tabel.scara,
+        baseLatime: setari.tabel.latime,
+      },
       alt: e.altKey,
     };
     (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
@@ -298,17 +351,22 @@ export function PdfDragPreview({
         y = clamp(snapped.y, 0, 100 - box.h);
         setGuides(snapped.guides);
         patchTarget(d.target, { x, y });
+      } else if (d.target === "tabel") {
+        /* Colț SE = scale: cutie + font + rânduri */
+        const base = Math.max(20, d.orig.baseLatime);
+        const origEff = (base * d.orig.scara) / 100;
+        const newEff = clamp(origEff + dxPct, 12, 100 - d.orig.x);
+        const scara = clamp(
+          Math.round((newEff / base) * 100),
+          PDF_TABEL_SCARA_MIN,
+          PDF_TABEL_SCARA_MAX,
+        );
+        patchTarget(d.target, { scara });
+        setGuides([]);
       } else {
-        if (d.target === "tabel") {
-          const delta = dxPct;
-          const scara = clamp(Math.round(d.orig.scara + delta), 60, 120);
-          patchTarget(d.target, { scara });
-          setGuides([]);
-        } else {
-          const latime = clamp(d.orig.latime + dxPct, 10, 100 - d.orig.x);
-          patchTarget(d.target, { latime });
-          setGuides([]);
-        }
+        const latime = clamp(d.orig.latime + dxPct, 10, 100 - d.orig.x);
+        patchTarget(d.target, { latime });
+        setGuides([]);
       }
     }
     function onUp() {
@@ -352,13 +410,16 @@ export function PdfDragPreview({
         {children}
         {sel && (
           <span className="pointer-events-none absolute -top-4 left-0 rounded bg-sky-500 px-1 py-px text-[9px] leading-none font-semibold text-white whitespace-nowrap">
-            {targetLabel(t)}
+            {t === "tabel"
+              ? `Tabel · ${Math.round(setari.tabel.scara)}%`
+              : targetLabel(t)}
           </span>
         )}
         {sel && dragEnabled && (
           <span
             onPointerDown={(e) => onPointerDown(e, t, "resize")}
-            className="absolute right-0 bottom-0 h-3 w-3 translate-x-1/2 translate-y-1/2 cursor-se-resize rounded-sm border border-sky-600 bg-white"
+            title={t === "tabel" ? "Scale (micșorează / mărește)" : "Lățime"}
+            className="absolute right-0 bottom-0 h-3.5 w-3.5 translate-x-1/2 translate-y-1/2 cursor-se-resize rounded-sm border border-sky-600 bg-white shadow-sm"
           />
         )}
       </div>
@@ -366,14 +427,18 @@ export function PdfDragPreview({
   }
 
   /* ---- render table for one part ---- */
-  function renderPartTable(part: PdfDayPart, partIdx: number) {
+  function renderPartTable(
+    part: PdfDayPart,
+    partIdx: number,
+    addTrailing: boolean,
+  ) {
     const sliced = slicePartData(days, rows, part);
     const showOsd = shouldShowOsd(setari.impartire, partIdx, parts.length);
     const isDetaliat = setari.impartire.antet_stil === "detaliat";
     const namePct = setari.tabel.latime_nume;
     const osdPct = showOsd ? 4.5 : 0;
     const dayPct = (100 - namePct - osdPct) / Math.max(sliced.days.length, 1);
-    const maxRows = 10;
+    const colSpanDays = sliced.days.length + (showOsd ? 1 : 0);
 
     return (
       <table
@@ -389,7 +454,7 @@ export function PdfDragPreview({
                 width: `${namePct}%`,
                 borderRight: border,
                 borderBottom: border,
-                height: rowH * 0.85,
+                height: headerH,
               }}
             />
             {sliced.days.map((d) => (
@@ -403,7 +468,7 @@ export function PdfDragPreview({
                   fontWeight: setari.tabel.font_antet_bold ? 700 : 400,
                   fontSize: cellFs,
                   textAlign: "center",
-                  height: rowH * 0.85,
+                  height: headerH,
                   overflow: "hidden",
                 }}
               >
@@ -420,6 +485,7 @@ export function PdfDragPreview({
                   borderBottom: border,
                   fontSize: cellFs * 0.9,
                   fontWeight: setari.tabel.font_antet_bold ? 700 : 400,
+                  height: headerH,
                 }}
               >
                 O.SD
@@ -432,7 +498,7 @@ export function PdfDragPreview({
               style={{
                 borderRight: border,
                 borderBottom: border,
-                height: rowH * 0.75,
+                height: abbrH,
               }}
             />
             {sliced.days.map((d) => (
@@ -445,7 +511,7 @@ export function PdfDragPreview({
                   fontWeight: setari.tabel.font_antet_bold ? 700 : 400,
                   fontSize: isDetaliat ? cellFs * 0.65 : cellFs * 0.9,
                   textAlign: "center",
-                  height: rowH * 0.75,
+                  height: abbrH,
                   overflow: "hidden",
                 }}
               >
@@ -455,12 +521,18 @@ export function PdfDragPreview({
               </th>
             ))}
             {showOsd && (
-              <th style={{ borderRight: border, borderBottom: border }} />
+              <th
+                style={{
+                  borderRight: border,
+                  borderBottom: border,
+                  height: abbrH,
+                }}
+              />
             )}
           </tr>
         </thead>
         <tbody>
-          {sliced.rows.slice(0, maxRows).map((row) => (
+          {sliced.rows.map((row) => (
             <tr key={row.name}>
               <td
                 style={{
@@ -469,7 +541,7 @@ export function PdfDragPreview({
                   padding: "0 2px",
                   fontSize: cellFs,
                   textTransform: "uppercase",
-                  height: rowH,
+                  height: staffRowH,
                   verticalAlign: "middle",
                 }}
               >
@@ -497,7 +569,7 @@ export function PdfDragPreview({
                         long && setari.tabel.celule_lungi === "micsoreaza"
                           ? cellFs * 0.75
                           : cellFs,
-                      height: rowH,
+                      height: staffRowH,
                       verticalAlign: "middle",
                       whiteSpace: "pre-line",
                       lineHeight: 1.05,
@@ -515,6 +587,7 @@ export function PdfDragPreview({
                     borderBottom: border,
                     textAlign: "center",
                     fontSize: cellFs,
+                    height: staffRowH,
                   }}
                 >
                   {row.osd}
@@ -522,22 +595,68 @@ export function PdfDragPreview({
               )}
             </tr>
           ))}
-          {sliced.rows.length > maxRows && (
-            <tr>
-              <td
-                colSpan={sliced.days.length + 1 + (showOsd ? 1 : 0)}
-                style={{
-                  borderRight: border,
-                  borderBottom: border,
-                  textAlign: "center",
-                  fontSize: cellFs * 0.85,
-                  color: "#666",
-                  height: rowH,
-                }}
-              >
-                … +{sliced.rows.length - maxRows} rânduri
-              </td>
-            </tr>
+          {addTrailing && (
+            <>
+              <tr>
+                <td
+                  style={{
+                    borderRight: border,
+                    borderBottom: border,
+                    height: emptyH,
+                  }}
+                />
+                {sliced.days.map((d) => (
+                  <td
+                    key={`e-${d.day}`}
+                    style={{
+                      borderRight: border,
+                      borderBottom: border,
+                      height: emptyH,
+                      background: d.weekend
+                        ? setari.tabel.culoare_weekend
+                        : undefined,
+                    }}
+                  />
+                ))}
+                {showOsd && (
+                  <td
+                    style={{
+                      borderRight: border,
+                      borderBottom: border,
+                      height: emptyH,
+                    }}
+                  />
+                )}
+              </tr>
+              <tr>
+                <td
+                  style={{
+                    borderRight: border,
+                    borderBottom: border,
+                    padding: "0 2px",
+                    fontSize: cellFs,
+                    textTransform: "uppercase",
+                    height: delegatH,
+                    verticalAlign: "middle",
+                  }}
+                >
+                  {(footer.delegatName ?? "").toUpperCase()}
+                </td>
+                <td
+                  colSpan={colSpanDays}
+                  style={{
+                    borderRight: border,
+                    borderBottom: border,
+                    textAlign: "center",
+                    fontSize: cellFs,
+                    height: delegatH,
+                    verticalAlign: "middle",
+                  }}
+                >
+                  {(footer.delegatLabel ?? "").toUpperCase()}
+                </td>
+              </tr>
+            </>
           )}
         </tbody>
       </table>
@@ -638,24 +757,29 @@ export function PdfDragPreview({
           {frame(
             "tabel",
             <div className="flex w-full flex-col">
-              {visibleParts.map((part, vi) => (
-                <div
-                  key={`vp-${part.index}`}
-                  style={{
-                    marginTop:
-                      vi > 0 && !isMultiPage
-                        ? `${setari.impartire.spatiu_mm}mm`
-                        : undefined,
-                  }}
-                >
-                  {renderPartTable(part, part.index)}
-                </div>
-              ))}
+              {visibleParts.map((part, vi) => {
+                const isLastVisible =
+                  vi === visibleParts.length - 1 &&
+                  (!isMultiPage || safePageIndex === pageCount - 1);
+                return (
+                  <div
+                    key={`vp-${part.index}`}
+                    style={{
+                      marginTop:
+                        vi > 0 && !isMultiPage
+                          ? `${setari.impartire.spatiu_mm}mm`
+                          : undefined,
+                    }}
+                  >
+                    {renderPartTable(part, part.index, isLastVisible)}
+                  </div>
+                );
+              })}
             </div>,
             {
               left: `${setari.tabel.x}%`,
               top: `${setari.tabel.y}%`,
-              width: `${setari.tabel.latime}%`,
+              width: `${tabelW}%`,
             },
           )}
 
@@ -667,8 +791,12 @@ export function PdfDragPreview({
                 className="flex w-full justify-between italic uppercase"
                 style={{ fontSize: setari.footer.marime * tblScale }}
               >
-                <span>{footer.medicSef}</span>
-                <span>{footer.asSef}</span>
+                <span className="whitespace-pre-line leading-snug">
+                  {formatFooterSignatureLines(footer.medicSef)}
+                </span>
+                <span className="whitespace-pre-line text-right leading-snug">
+                  {formatFooterSignatureLines(footer.asSef)}
+                </span>
               </div>,
               {
                 left: `${setari.footer.x}%`,

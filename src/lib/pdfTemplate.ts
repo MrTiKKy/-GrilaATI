@@ -123,6 +123,22 @@ export function detectMarginPreset(
   return "personalizat";
 }
 
+/** Scale tabel: micșorează / mărește cutia + conținutul. */
+export const PDF_TABEL_SCARA_MIN = 50;
+export const PDF_TABEL_SCARA_MAX = 150;
+
+/**
+ * Lățime efectivă pe pagină (%): `latime` la 100% × scara.
+ * Ex. latime=100, scara=70 → 70% din pagină.
+ */
+export function tabelLatimeEfectiva(tabel: {
+  latime: number;
+  scara: number;
+}): number {
+  const raw = (tabel.latime * tabel.scara) / 100;
+  return Math.min(100, Math.max(12, raw));
+}
+
 /** Valorile UI pentru „format inițial” — aliniate la origin/main (layout legacy). */
 export const DEFAULT_PDF_TEMPLATE: PdfTemplateSetari = {
   pagina: {
@@ -317,7 +333,12 @@ export function mergePdfTemplate(raw: unknown): PdfTemplateSetari {
       tabel_compact: asBool(paginaIn.tabel_compact, d.pagina.tabel_compact),
     },
     tabel: {
-      scara: clampNum(tabelIn.scara, 60, 120, d.tabel.scara),
+      scara: clampNum(
+        tabelIn.scara,
+        PDF_TABEL_SCARA_MIN,
+        PDF_TABEL_SCARA_MAX,
+        d.tabel.scara,
+      ),
       font_pt: clampNum(tabelIn.font_pt, 5, 14, d.tabel.font_pt),
       inaltime_rand: clampNum(tabelIn.inaltime_rand, 8, 36, d.tabel.inaltime_rand),
       latime_nume: clampNum(tabelIn.latime_nume, 8, 35, d.tabel.latime_nume),

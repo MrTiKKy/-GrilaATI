@@ -14,11 +14,13 @@ import {
 } from "@/lib/cellText";
 import {
   GRAFIC_FOOTER_DEFAULTS,
+  footerSignatureLineList,
   mergeGraficFooter,
   type GraficFooterTexts,
 } from "@/lib/graficFooter";
 import {
   DEFAULT_PDF_TEMPLATE,
+  tabelLatimeEfectiva,
   a4SizePt,
   applyPdfTemplateVars,
   mmToPt,
@@ -201,7 +203,7 @@ function resolveLayout(t: PdfTemplateSetari): ResolvedLayout {
     staffH2: t.tabel.inaltime_rand * STAFF_2_RATIO * scale,
     emptyH: t.tabel.inaltime_rand * EMPTY_RATIO * scale,
     delegatH: t.tabel.inaltime_rand * DELEGAT_RATIO * scale,
-    borderW: t.tabel.grosime_linii,
+    borderW: Math.max(0.4, t.tabel.grosime_linii * scale),
     weekendColor: t.tabel.culoare_weekend,
     headerBold: t.tabel.font_antet_bold,
     celuleLungi: t.tabel.celule_lungi,
@@ -484,7 +486,7 @@ function buildPartInfos(
       dayCount,
       dayValues,
       layout,
-      template.tabel.latime,
+      tabelLatimeEfectiva(template.tabel),
       showOsd,
     );
     const nf = nameFontForWidth(
@@ -687,9 +689,11 @@ function computeStretchH(
   page: PDFPageModel,
   layout: ResolvedLayout,
   spacerH: number,
+  /** Limită jos (pt) — de obicei top-ul footer-ului absolut, ca să nu se suprapună */
+  contentBottomPt: number,
 ): number | null {
   if (layout.compact) return null;
-  const availH = layout.pageH - page.contentTopPt - layout.padBottom;
+  const availH = Math.max(0, contentBottomPt - page.contentTopPt);
   const hintH = page.totalPages > 1 ? HINT_H : 0;
   const numSlots = page.slots.length;
   const headersH = numSlots * (layout.headerH + layout.abbrH);
@@ -798,16 +802,30 @@ export function GraficAtiPdfTemplated({ data }: { data: GraficPdfData }) {
         const pageHint = pageHintTpl
           .replace(/\{page\}/g, String(page.globalIdx + 1))
           .replace(/\{total\}/g, String(page.totalPages));
-        const stretchH = computeStretchH(page, layout, spacerH);
+        const footerTopPt = template.footer.afisat
+          ? (layout.pageH * template.footer.y) / 100
+          : layout.pageH - layout.padBottom;
+        /** Mic spațiu între tabel (incl. delegat) și semnături */
+        const contentBottomPt = Math.max(
+          page.contentTopPt + layout.staffH1,
+          footerTopPt - 6,
+        );
+        const stretchH = computeStretchH(
+          page,
+          layout,
+          spacerH,
+          contentBottomPt,
+        );
         const tabelLeftPt = (layout.pageW * template.tabel.x) / 100;
         const tabelWidthPt =
-          (layout.pageW * template.tabel.latime) / 100;
+          (layout.pageW * tabelLatimeEfectiva(template.tabel)) / 100;
+        const medicLines = footerSignatureLineList(footer.medicSef);
+        const asLines = footerSignatureLineList(footer.asSef);
 
         return (
           <Page
             key={`page-${page.globalIdx}`}
-            size="A4"
-            orientation={template.pagina.orientare}
+            size={[layout.pageW, layout.pageH]}
             style={{
               paddingTop: 0,
               paddingBottom: 0,
@@ -820,6 +838,9 @@ export function GraficAtiPdfTemplated({ data }: { data: GraficPdfData }) {
             }}
             wrap={false}
           >
+            {/* Ancoră in-flow: fără ea, doar absolute → MediaBox height 0 */}
+            <View style={{ width: layout.pageW, height: layout.pageH }} />
+
             {/* Title (absolute) */}
             {page.showTitle && template.titlu.afisat && page.titleText ? (
               <View
@@ -850,7 +871,7 @@ export function GraficAtiPdfTemplated({ data }: { data: GraficPdfData }) {
                   position: "absolute",
                   right:
                     (layout.pageW *
-                      (100 - template.tabel.x - template.tabel.latime)) /
+                      (100 - template.tabel.x - tabelLatimeEfectiva(template.tabel))) /
                     100,
                   top: Math.max(2, page.contentTopPt - HINT_H),
                   fontFamily: FONT_FAMILY,
@@ -1201,30 +1222,36 @@ export function GraficAtiPdfTemplated({ data }: { data: GraficPdfData }) {
                 }}
               >
                 <View style={{ width: "42%" }}>
-                  <Text
-                    style={{
-                      fontFamily: FONT_FAMILY,
-                      fontStyle: "italic",
-                      fontSize: template.footer.marime * layout.scale,
-                      textTransform: "uppercase",
-                      textAlign: alignCss(template.footer.aliniere),
-                    }}
-                  >
-                    {footer.medicSef}
-                  </Text>
+                  {medicLines.map((line, i) => (
+                    <Text
+                      key={`medic-${i}`}
+                      style={{
+                        fontFamily: FONT_FAMILY,
+                        fontStyle: "italic",
+                        fontSize: template.footer.marime * layout.scale,
+                        textTransform: "uppercase",
+                        textAlign: alignCss(template.footer.aliniere),
+                      }}
+                    >
+                      {line}
+                    </Text>
+                  ))}
                 </View>
                 <View style={{ width: "42%", alignItems: "flex-end" }}>
-                  <Text
-                    style={{
-                      fontFamily: FONT_FAMILY,
-                      fontStyle: "italic",
-                      fontSize: template.footer.marime * layout.scale,
-                      textTransform: "uppercase",
-                      textAlign: "right",
-                    }}
-                  >
-                    {footer.asSef}
-                  </Text>
+                  {asLines.map((line, i) => (
+                    <Text
+                      key={`as-${i}`}
+                      style={{
+                        fontFamily: FONT_FAMILY,
+                        fontStyle: "italic",
+                        fontSize: template.footer.marime * layout.scale,
+                        textTransform: "uppercase",
+                        textAlign: "right",
+                      }}
+                    >
+                      {line}
+                    </Text>
+                  ))}
                 </View>
               </View>
             )}
