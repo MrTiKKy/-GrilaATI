@@ -46,8 +46,8 @@ export function CellFocus({
       data-cell-active={active ? "true" : undefined}
       style={activeRing}
       className={[
-        "flex h-full min-h-9 w-full items-center justify-center gap-0.5 px-0.5",
-        "font-medium",
+        "flex h-9 w-full items-center justify-center gap-0.5 px-0.5",
+        "font-medium tabular-nums",
         "transition-[background-color,box-shadow] duration-150 ease-out",
         "outline-none focus-visible:outline-none rounded-none",
         active

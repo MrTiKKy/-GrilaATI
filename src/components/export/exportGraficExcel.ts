@@ -162,6 +162,7 @@ async function buildExcelJsWorkbook(data: GraficSnapshot) {
     columnHeaderHasWeekendBg(
       d.weekend,
       data.rows.map((row) => row.cellWeekendBg?.[i] ?? false),
+      Boolean(d.sarbatoare),
     ),
   );
 
@@ -387,6 +388,7 @@ function buildHtmlXls(data: GraficSnapshot): string {
     columnHeaderHasWeekendBg(
       d.weekend,
       data.rows.map((row) => row.cellWeekendBg?.[i] ?? false),
+      Boolean(d.sarbatoare),
     ),
   );
 

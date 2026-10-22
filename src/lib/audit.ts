@@ -44,7 +44,9 @@ export type AuditAction =
   | "membru_scos"
   | "workspace_creat"
   | "export_template_upsert"
-  | "export_template_reset";
+  | "export_template_reset"
+  | "sarbatoare_set"
+  | "sarbatoare_clear";
 
 export async function writeAudit(params: {
   action: AuditAction;

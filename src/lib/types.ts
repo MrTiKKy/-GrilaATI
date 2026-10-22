@@ -46,6 +46,8 @@ export type LunaResponse = {
   categorieId: string;
   angajati: AngajatDto[];
   programari: ProgramareDto[];
+  /** Zile sărbătoare legală (YYYY-MM-DD) — coloană portocalie + O.SD ca duminica */
+  sarbatori?: string[];
   /** Foi existente pentru categoria cerută */
   foi?: number[];
   /** Foi cu nume/etichetă (faza 5) */
@@ -118,7 +120,13 @@ export type UpsertProgramareBody = {
 /** Snapshot salvat pentru PDF (arhiva grafice_finale) */
 export type GraficSnapshot = {
   title: string;
-  days: Array<{ day: number; abbr: string; weekend: boolean }>;
+  days: Array<{
+    day: number;
+    abbr: string;
+    weekend: boolean;
+    /** Sărbătoare legală — fundal + O.SD ca duminica */
+    sarbatoare?: boolean;
+  }>;
   rows: Array<{
     name: string;
     cells: string[];

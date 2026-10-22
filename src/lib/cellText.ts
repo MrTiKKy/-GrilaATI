@@ -36,11 +36,20 @@ export function cellTextError(raw: string): string | null {
   return null;
 }
 
-/** Lățime de bază coloană zi (px) — ~min-w-[2.1rem] la 16px root */
-export const DAY_COL_BASE_PX = 34;
-export const DAY_COL_MAX_PX = 90;
+/** Lățime = înălțime casuță zi (pătrat) */
+export const DAY_COL_BASE_PX = 36;
+export const DAY_COL_MAX_PX = 36;
 export const CELL_FONT_BASE = 15;
+/** Font mai mare pentru coduri cu cifre (1, 2, 1/3, 2*) — umple casuta */
+export const CELL_FONT_DIGIT = 19;
 export const CELL_FONT_MIN = 10;
+
+/** Cod de schimb pe cifre (fără litere): 1, 2, 1/3, 2*, … */
+export function isDigitShiftCode(v: string): boolean {
+  const t = v.trim();
+  if (!t) return false;
+  return /\d/.test(t) && !/\p{L}/u.test(t);
+}
 
 /**
  * Rupe pe max 2 rânduri la separator natural (- / spațiu),
@@ -79,6 +88,9 @@ function estimateWidth(chars: number, fontSize: number): number {
 /** Layout pentru o valoare de celulă (preview / coloană). */
 export function layoutCellText(text: string): CellLayout {
   const raw = text.trim();
+  const digit = isDigitShiftCode(raw);
+  const preferredFont = digit ? CELL_FONT_DIGIT : CELL_FONT_BASE;
+
   if (!raw) {
     return {
       widthPx: DAY_COL_BASE_PX,
@@ -92,7 +104,7 @@ export function layoutCellText(text: string): CellLayout {
   const lines = [...splitCellDisplayLines(raw)];
   const longest = Math.max(...lines.map((l) => l.length), 1);
 
-  let fontSize = CELL_FONT_BASE;
+  let fontSize = preferredFont;
   let width = estimateWidth(longest, fontSize);
 
   if (width <= DAY_COL_BASE_PX) {
@@ -105,35 +117,32 @@ export function layoutCellText(text: string): CellLayout {
     };
   }
 
-  if (width > DAY_COL_MAX_PX) {
-    const target = DAY_COL_MAX_PX - 8;
-    fontSize = Math.max(
-      CELL_FONT_MIN,
-      Math.floor(target / (longest * 0.58)),
+  // Casute pătrate: nu lărgim coloana — micșorăm fontul / truncăm
+  const target = DAY_COL_BASE_PX - 6;
+  fontSize = Math.max(
+    CELL_FONT_MIN,
+    Math.min(preferredFont, Math.floor(target / (longest * 0.58))),
+  );
+  const fits = estimateWidth(longest, fontSize) <= DAY_COL_BASE_PX + 0.5;
+  if (!fits) {
+    const maxChars = Math.max(
+      1,
+      Math.floor((DAY_COL_BASE_PX - 6) / (fontSize * 0.58)),
     );
-    width = DAY_COL_MAX_PX;
-    const fits = estimateWidth(longest, fontSize) <= DAY_COL_MAX_PX + 0.5;
-    if (!fits) {
-      // Truncate each line visually with …
-      const maxChars = Math.max(
-        1,
-        Math.floor((DAY_COL_MAX_PX - 8) / (fontSize * 0.58)),
-      );
-      const truncatedLines = lines.map((l) =>
-        l.length > maxChars ? `${l.slice(0, Math.max(1, maxChars - 1))}…` : l,
-      );
-      return {
-        widthPx: DAY_COL_MAX_PX,
-        fontSize,
-        lines: truncatedLines,
-        truncated: true,
-        title: raw,
-      };
-    }
+    const truncatedLines = lines.map((l) =>
+      l.length > maxChars ? `${l.slice(0, Math.max(1, maxChars - 1))}…` : l,
+    );
+    return {
+      widthPx: DAY_COL_BASE_PX,
+      fontSize,
+      lines: truncatedLines,
+      truncated: true,
+      title: raw,
+    };
   }
 
   return {
-    widthPx: Math.min(DAY_COL_MAX_PX, Math.ceil(width)),
+    widthPx: DAY_COL_BASE_PX,
     fontSize,
     lines,
     truncated: false,
@@ -141,14 +150,9 @@ export function layoutCellText(text: string): CellLayout {
   };
 }
 
-/** Lățimea necesară pe o coloană dată fiind toate valorile din zi. */
-export function columnWidthForValues(values: string[]): number {
-  let max = DAY_COL_BASE_PX;
-  for (const v of values) {
-    if (!v?.trim()) continue;
-    max = Math.max(max, layoutCellText(v).widthPx);
-  }
-  return max;
+/** Lățime coloană zi — fixă (casute pătrate). */
+export function columnWidthForValues(_values: string[]): number {
+  return DAY_COL_BASE_PX;
 }
 
 // ---------------------------------------------------------------------------

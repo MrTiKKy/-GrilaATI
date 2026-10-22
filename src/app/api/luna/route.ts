@@ -12,6 +12,7 @@ import {
   getTexte,
 } from "@/lib/texte";
 import { parseFoaieParam, parseMonth, parseYear } from "@/lib/validate";
+import { listSarbatoriInRange } from "@/lib/sarbatori";
 import {
   toDateString,
   type AngajatDto,
@@ -58,8 +59,16 @@ export async function GET(request: Request) {
     const endDate = new Date(Date.UTC(an, luna, 1));
     const end = endDate.toISOString().slice(0, 10);
 
-    const texte = await getTexte(workspaceId);
-    const foiItemsRaw = await listLunaFoi(workspaceId, an, luna, categorie.id);
+    const [texte, foiItemsRaw, sarbatori] = await Promise.all([
+      getTexte(workspaceId),
+      listLunaFoi(workspaceId, an, luna, categorie.id),
+      listSarbatoriInRange(workspaceId, start, end).catch((e) => {
+        if (e instanceof Error && /sarbatori_legale/i.test(e.message)) {
+          return [] as string[];
+        }
+        throw e;
+      }),
+    ]);
     const foiItems = foiItemsRaw.map((i) => ({
       ...i,
       label: i.nume?.trim()
@@ -152,6 +161,7 @@ export async function GET(request: Request) {
       categorieId: categorie.id,
       angajati,
       programari,
+      sarbatori,
       foi,
       foiItems,
       foaie,

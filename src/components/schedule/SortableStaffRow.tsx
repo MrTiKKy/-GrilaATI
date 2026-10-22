@@ -208,7 +208,12 @@ export function SortableStaffRow({
             key={`${staff.id}-${col.key}`}
             style={
               w
-                ? { width: w, minWidth: w, maxWidth: w }
+                ? {
+                    width: w,
+                    minWidth: w,
+                    maxWidth: w,
+                    height: w,
+                  }
                 : undefined
             }
             className={[

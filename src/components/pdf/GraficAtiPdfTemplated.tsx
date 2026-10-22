@@ -47,6 +47,7 @@ export type GraficPdfDay = {
   day: number;
   abbr: string;
   weekend: boolean;
+  sarbatoare?: boolean;
 };
 
 export type GraficPdfRow = {
@@ -754,6 +755,7 @@ export function GraficAtiPdfTemplated({ data }: { data: GraficPdfData }) {
       columnHeaderHasWeekendBg(
         d.weekend,
         data.rows.map((row) => row.cellWeekendBg?.[i] ?? false),
+        Boolean(d.sarbatoare),
       ),
     ]),
   );

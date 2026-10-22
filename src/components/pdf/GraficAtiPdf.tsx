@@ -13,6 +13,7 @@ export type GraficPdfDay = {
   day: number;
   abbr: string;
   weekend: boolean;
+  sarbatoare?: boolean;
 };
 
 export type GraficPdfRow = {

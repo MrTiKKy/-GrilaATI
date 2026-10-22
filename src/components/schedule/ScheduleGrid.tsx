@@ -389,6 +389,8 @@ export function ScheduleGrid() {
 
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [grid, setGrid] = useState<GridState>({});
+  /** Date YYYY-MM-DD sărbătoare legală (coloană portocalie + O.SD ca duminica) */
+  const [sarbatori, setSarbatori] = useState<Set<string>>(() => new Set());
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState<string | null>(null);
 
@@ -533,6 +535,7 @@ export function ScheduleGrid() {
         const mapped = mapLunaToState(data, cols);
         setStaff(mapped.staff);
         setGrid(mapped.grid);
+        setSarbatori(new Set(data.sarbatori ?? []));
         const nextFoi =
           data.foi && data.foi.length > 0 ? data.foi : [1];
         setFoi(nextFoi);
@@ -1263,8 +1266,9 @@ export function ScheduleGrid() {
         abbr: c.abbr,
         key: c.key,
         weekday: c.weekday,
+        sarbatoare: sarbatori.has(c.date),
       })),
-    [dayColumns],
+    [dayColumns, sarbatori],
   );
 
   const osdByStaffId = useMemo(() => {
@@ -1296,24 +1300,64 @@ export function ScheduleGrid() {
     return map;
   }, [visibleColumns, staff, grid]);
 
-  /** Antet zi (nr + literă) portocaliu: weekend SAU toată coloana are fundal weekend. */
+  /** Antet zi (nr + literă) portocaliu: weekend / sărbătoare / toată coloana fundal. */
   const columnHeaderWeekend = useMemo(() => {
     const map: Record<string, boolean> = {};
     for (const col of visibleColumns) {
       const flags = staff.map(
         (p) => grid[p.id]?.[col.key]?.fundalWeekend === true,
       );
-      map[col.key] = columnHeaderHasWeekendBg(col.weekend, flags);
+      map[col.key] = columnHeaderHasWeekendBg(
+        col.weekend,
+        flags,
+        sarbatori.has(col.date),
+      );
     }
     return map;
-  }, [visibleColumns, staff, grid]);
+  }, [visibleColumns, staff, grid, sarbatori]);
 
   const rowColumns = visibleColumns.map((col) => ({
     kind: "day" as const,
     key: col.key,
-    weekend: col.weekend,
+    weekend: col.weekend || sarbatori.has(col.date),
     widthPx: dayColWidths[col.key] ?? DAY_COL_BASE_PX,
   }));
+
+  async function toggleSarbatoare(col: DayColumn) {
+    const already = sarbatori.has(col.date);
+    const label = `${col.day} ${col.abbr}`;
+    const ok = window.confirm(
+      already
+        ? `Anulezi sărbătoarea legală pentru ${label}?\nColoana revine la fundal normal și O.SD la tariful zilei.`
+        : `Marchezi ${label} ca sărbătoare legală?\nToată coloana devine portocalie și O.SD se calculează ca duminica.`,
+    );
+    if (!ok) return;
+
+    const prev = sarbatori;
+    const next = new Set(prev);
+    if (already) next.delete(col.date);
+    else next.add(col.date);
+    setSarbatori(next);
+
+    try {
+      const res = await fetch("/api/sarbatori", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ data: col.date, activ: !already }),
+      });
+      if (!res.ok) throw new Error(await readError(res));
+      flashStatus(
+        already
+          ? `Sărbătoare anulată: ${label}`
+          : `Sărbătoare legală: ${label}`,
+      );
+    } catch (e) {
+      setSarbatori(prev);
+      setError(
+        e instanceof Error ? e.message : "Nu s-a putut salva sărbătoarea",
+      );
+    }
+  }
 
   function activateFromVisible(row: number, localCol: number) {
     const key = visibleColumns[localCol]?.key;
@@ -1514,8 +1558,14 @@ export function ScheduleGrid() {
                       <th
                         key={`${col.key}-n`}
                         style={{ width: w, minWidth: w, maxWidth: w }}
+                        title="Dublu-click: sărbătoare legală"
+                        onDoubleClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          void toggleSarbatoare(col);
+                        }}
                         className={[
-                          "border-0 border-r border-b border-b-slate-200 border-r-slate-300 px-0 py-1.5 text-center font-semibold text-slate-700",
+                          "border-0 border-r border-b border-b-slate-200 border-r-slate-300 px-0 py-1.5 text-center font-semibold text-slate-700 cursor-pointer select-none",
                           headerOrange ? "bg-[#F5C09A]" : "bg-slate-50",
                         ].join(" ")}
                       >

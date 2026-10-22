@@ -15,6 +15,7 @@ import {
   lunaScurta,
 } from "@/lib/texte";
 import { toDateString, type GraficSnapshot } from "@/lib/types";
+import { listSarbatoriInRange } from "@/lib/sarbatori";
 import { orePentruWeekday } from "@/lib/weekendOre";
 
 export async function buildMonthTitle(
@@ -46,27 +47,36 @@ export async function buildGraficSnapshotFromDb(
   const endDate = new Date(Date.UTC(an, luna, 1));
   const end = endDate.toISOString().slice(0, 10);
   const daysInMonth = new Date(an, luna, 0).getDate();
-  const [oreRows, footer, texte, pdfTpl, wsRows] = await Promise.all([
+  const [oreRows, footer, texte, pdfTpl, wsRows, sarbatori] = await Promise.all([
     listOreCoduriForCategorie(workspaceId, categorieId, { onlyActive: false }),
     loadGraficFooter(workspaceId),
     getTexte(workspaceId),
     loadPdfTemplateForWorkspace(workspaceId, templateId),
     sql`SELECT nume FROM workspaces WHERE id = ${workspaceId}::uuid LIMIT 1`,
+    listSarbatoriInRange(workspaceId, start, end).catch((e) => {
+      if (e instanceof Error && /sarbatori_legale/i.test(e.message)) {
+        return [] as string[];
+      }
+      throw e;
+    }),
   ]);
   const ratesByCod = rowsToByCod(oreRows);
   const abbrs = dayAbbrList(texte);
   const workspaceNume = wsRows[0] ? String(wsRows[0].nume) : "";
+  const sarbatoareSet = new Set(sarbatori);
 
   const days = Array.from({ length: daysInMonth }, (_, i) => {
     const day = i + 1;
     const weekday = new Date(an, luna - 1, day).getDay();
     const abbr = abbrs[weekday] ?? "";
+    const date = `${an}-${String(luna).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
     return {
       day,
       abbr,
       weekday,
       weekend: weekday === 0 || weekday === 6,
-      date: `${an}-${String(luna).padStart(2, "0")}-${String(day).padStart(2, "0")}`,
+      sarbatoare: sarbatoareSet.has(date),
+      date,
     };
   });
 
@@ -108,18 +118,30 @@ export async function buildGraficSnapshotFromDb(
 
   return {
     title: buildTitluGrafic(texte, categorie.titluGrafic, an, luna),
-    days: days.map(({ day, abbr, weekend }) => ({ day, abbr, weekend })),
+    days: days.map(({ day, abbr, weekend, sarbatoare }) => ({
+      day,
+      abbr,
+      weekend,
+      sarbatoare,
+    })),
     rows: angajatiRows.map((row) => {
       const id = String(row.id);
       const cells = days.map(
         (d) => byStaffDay.get(`${id}|${d.date}`)?.valoare ?? "",
       );
-      const cellWeekendBg = days.map(
-        (d) => byStaffDay.get(`${id}|${d.date}`)?.fundalWeekend ?? false,
-      );
+      const cellWeekendBg = days.map((d) => {
+        const cellFundal =
+          byStaffDay.get(`${id}|${d.date}`)?.fundalWeekend ?? false;
+        return d.sarbatoare || cellFundal;
+      });
       let osd = 0;
       for (let i = 0; i < days.length; i++) {
-        osd += orePentruWeekday(days[i].weekday, cells[i], ratesByCod);
+        osd += orePentruWeekday(
+          days[i].weekday,
+          cells[i],
+          ratesByCod,
+          days[i].sarbatoare,
+        );
       }
       return {
         name: String(row.nume).toUpperCase(),
