@@ -710,6 +710,63 @@ function computeStretchH(
   return Math.max(layout.staffH1 * 0.75, staffBudget / totalStaff);
 }
 
+/** Înălțime tabel (pt) pe o pagină, la o înălțime de rând dată. */
+function measurePageTableH(
+  page: PDFPageModel,
+  layout: ResolvedLayout,
+  spacerH: number,
+  staffH: number,
+): number {
+  let h = 0;
+  for (let i = 0; i < page.slots.length; i++) {
+    if (i > 0) h += spacerH;
+    const slot = page.slots[i]!;
+    h += layout.headerH + layout.abbrH;
+    h += slot.staffRows.length * staffH;
+    if (slot.addTrailing) h += layout.emptyH + layout.delegatH;
+  }
+  return h;
+}
+
+/**
+ * Footer la jumătatea spațiului liber sub tabel.
+ * Stretch (dacă e cazul) umple până deasupra acelei poziții, apoi Y se recentrează.
+ */
+function resolveFooterTopPt(
+  page: PDFPageModel,
+  layout: ResolvedLayout,
+  spacerH: number,
+  showFooter: boolean,
+): { stretchH: number | null; footerTopPt: number } {
+  const pageBottomPt = layout.pageH - layout.padBottom;
+  const naturalH = measurePageTableH(
+    page,
+    layout,
+    spacerH,
+    layout.staffH1,
+  );
+  const tableBottomNatural = page.contentTopPt + naturalH;
+
+  if (!showFooter) {
+    const stretchH = computeStretchH(page, layout, spacerH, pageBottomPt);
+    return { stretchH, footerTopPt: pageBottomPt };
+  }
+
+  // Poziție inițială: mijloc între tabel (natural) și josul paginii
+  let footerTopPt = (tableBottomNatural + pageBottomPt) / 2;
+  const stretchH = computeStretchH(
+    page,
+    layout,
+    spacerH,
+    Math.max(page.contentTopPt + layout.staffH1, footerTopPt - 6),
+  );
+  const staffH = stretchH ?? layout.staffH1;
+  const tableBottom = page.contentTopPt + measurePageTableH(page, layout, spacerH, staffH);
+  // Recentare după stretch — footer exact la mijlocul spațiului rămas
+  footerTopPt = (tableBottom + pageBottomPt) / 2;
+  return { stretchH, footerTopPt };
+}
+
 /* ======================================================================== */
 /*  Main component                                                           */
 /* ======================================================================== */
@@ -804,25 +861,19 @@ export function GraficAtiPdfTemplated({ data }: { data: GraficPdfData }) {
         const pageHint = pageHintTpl
           .replace(/\{page\}/g, String(page.globalIdx + 1))
           .replace(/\{total\}/g, String(page.totalPages));
-        const footerTopPt = template.footer.afisat
-          ? (layout.pageH * template.footer.y) / 100
-          : layout.pageH - layout.padBottom;
-        /** Mic spațiu între tabel (incl. delegat) și semnături */
-        const contentBottomPt = Math.max(
-          page.contentTopPt + layout.staffH1,
-          footerTopPt - 6,
-        );
-        const stretchH = computeStretchH(
+        const medicLines = footerSignatureLineList(footer.medicSef);
+        const asLines = footerSignatureLineList(footer.asSef);
+        const showFooterBlock = page.showFooter && template.footer.afisat;
+        const { stretchH, footerTopPt } = resolveFooterTopPt(
           page,
           layout,
           spacerH,
-          contentBottomPt,
+          showFooterBlock,
         );
+        const footerYPct = (footerTopPt / layout.pageH) * 100;
         const tabelLeftPt = (layout.pageW * template.tabel.x) / 100;
         const tabelWidthPt =
           (layout.pageW * tabelLatimeEfectiva(template.tabel)) / 100;
-        const medicLines = footerSignatureLineList(footer.medicSef);
-        const asLines = footerSignatureLineList(footer.asSef);
 
         return (
           <Page
@@ -1209,13 +1260,13 @@ export function GraficAtiPdfTemplated({ data }: { data: GraficPdfData }) {
               })}
             </View>
 
-            {/* Footer (absolute) */}
-            {page.showFooter && template.footer.afisat && (
+            {/* Footer — mijloc între tabel și josul paginii */}
+            {showFooterBlock && (
               <View
                 style={{
                   ...absBox(
                     template.footer.x,
-                    template.footer.y,
+                    footerYPct,
                     template.footer.latime,
                   ),
                   flexDirection: "row",

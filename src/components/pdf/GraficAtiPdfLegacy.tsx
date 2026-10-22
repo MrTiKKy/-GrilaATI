@@ -95,6 +95,7 @@ const styles = StyleSheet.create({
     fontFamily: FONT_FAMILY,
     fontSize: 8,
     color: "#000",
+    flexDirection: "column",
   },
   title: {
     fontFamily: FONT_FAMILY,
@@ -179,9 +180,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  footerSpacer: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 0,
+    minHeight: TABLE_GAP,
+  },
   footer: {
-    marginTop: TABLE_GAP,
-    minHeight: FOOTER_BLOCK - TABLE_GAP,
+    flexGrow: 0,
+    flexShrink: 0,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
@@ -500,22 +507,26 @@ export function GraficAtiPdfLegacy({ data }: { data: GraficPdfData }) {
             </View>
 
             {includeDelegatBlock && (
-              <View style={styles.footer}>
-                <View style={styles.footerCol}>
-                  {footerSignatureLineList(footer.medicSef).map((line, i) => (
-                    <Text key={`medic-${i}`} style={styles.footerText}>
-                      {line}
-                    </Text>
-                  ))}
+              <>
+                <View style={styles.footerSpacer} />
+                <View style={styles.footer}>
+                  <View style={styles.footerCol}>
+                    {footerSignatureLineList(footer.medicSef).map((line, i) => (
+                      <Text key={`medic-${i}`} style={styles.footerText}>
+                        {line}
+                      </Text>
+                    ))}
+                  </View>
+                  <View style={[styles.footerCol, { alignItems: "flex-end" }]}>
+                    {footerSignatureLineList(footer.asSef).map((line, i) => (
+                      <Text key={`as-${i}`} style={styles.footerText}>
+                        {line}
+                      </Text>
+                    ))}
+                  </View>
                 </View>
-                <View style={[styles.footerCol, { alignItems: "flex-end" }]}>
-                  {footerSignatureLineList(footer.asSef).map((line, i) => (
-                    <Text key={`as-${i}`} style={styles.footerText}>
-                      {line}
-                    </Text>
-                  ))}
-                </View>
-              </View>
+                <View style={styles.footerSpacer} />
+              </>
             )}
           </Page>
         );

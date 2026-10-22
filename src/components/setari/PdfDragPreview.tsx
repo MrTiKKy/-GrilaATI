@@ -172,14 +172,13 @@ export function PdfDragPreview({
   const emptyH = rowHBase;
   const delegatH = rowHBase * (16 / 14);
 
-  /** Stretch ca în PDF când tabel_compact=false — rezervă spațiu pentru footer */
-  const staffRowH = (() => {
-    if (setari.pagina.tabel_compact) return rowHBase;
+  /**
+   * Stretch + footer Y ca în PDF: footer la mijloc între tabel și josul paginii.
+   */
+  const { staffRowH, footerTopPct } = (() => {
     const contentTop = (page.h * setari.tabel.y) / 100;
-    const footerTop = setari.footer.afisat
-      ? (page.h * setari.footer.y) / 100
-      : page.h;
-    const contentBottom = Math.max(contentTop + rowHBase, footerTop - 6);
+    const padBottomPt = (setari.pagina.margini.bottom / 25.4) * 72;
+    const pageBottom = page.h - padBottomPt;
     const nParts = isMultiPage ? 1 : parts.length;
     const headersTotal = nParts * (headerH + abbrH);
     const spacer =
@@ -188,9 +187,36 @@ export function PdfDragPreview({
         : 0;
     const trailing = emptyH + delegatH;
     const staffN = Math.max(1, rows.length);
-    const budget =
-      contentBottom - contentTop - headersTotal - spacer - trailing;
-    return Math.max(rowHBase * 0.75, budget / staffN);
+    const naturalTableH = headersTotal + spacer + trailing + staffN * rowHBase;
+    const tableBottomNatural = contentTop + naturalTableH;
+
+    if (!setari.footer.afisat) {
+      if (setari.pagina.tabel_compact) {
+        return { staffRowH: rowHBase, footerTopPct: setari.footer.y };
+      }
+      const budget =
+        pageBottom - contentTop - headersTotal - spacer - trailing;
+      return {
+        staffRowH: Math.max(rowHBase * 0.75, budget / staffN),
+        footerTopPct: setari.footer.y,
+      };
+    }
+
+    let footerTop = (tableBottomNatural + pageBottom) / 2;
+    let staffH = rowHBase;
+    if (!setari.pagina.tabel_compact) {
+      const contentBottom = Math.max(contentTop + rowHBase, footerTop - 6);
+      const budget =
+        contentBottom - contentTop - headersTotal - spacer - trailing;
+      staffH = Math.max(rowHBase * 0.75, budget / staffN);
+    }
+    const tableBottom =
+      contentTop + headersTotal + spacer + trailing + staffN * staffH;
+    footerTop = (tableBottom + pageBottom) / 2;
+    return {
+      staffRowH: staffH,
+      footerTopPct: (footerTop / page.h) * 100,
+    };
   })();
 
   /* ---- drag state ---- */
@@ -263,7 +289,12 @@ export function PdfDragPreview({
         h: 70,
       };
     if (t === "footer")
-      return { x: setari.footer.x, y: setari.footer.y, latime: setari.footer.latime, h: 4 };
+      return {
+        x: setari.footer.x,
+        y: footerTopPct,
+        latime: setari.footer.latime,
+        h: 4,
+      };
     const i = Number(t.split(":")[1]);
     const c = setari.casete_text[i];
     return { x: c?.x ?? 0, y: c?.y ?? 0, latime: c?.latime ?? 20, h: 4 };
@@ -783,7 +814,7 @@ export function PdfDragPreview({
             },
           )}
 
-          {/* footer */}
+          {/* footer — mijloc între tabel și josul paginii */}
           {setari.footer.afisat &&
             frame(
               "footer",
@@ -800,7 +831,7 @@ export function PdfDragPreview({
               </div>,
               {
                 left: `${setari.footer.x}%`,
-                top: `${setari.footer.y}%`,
+                top: `${footerTopPct}%`,
                 width: `${setari.footer.latime}%`,
               },
             )}
